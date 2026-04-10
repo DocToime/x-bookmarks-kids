@@ -364,12 +364,7 @@ body {
   color: var(--text-dim);
   margin-bottom: 8px;
 }
-.modal-info .original-link a {
-  color: var(--accent);
-  font-size: 0.8rem;
-  text-decoration: none;
-}
-.modal-info .original-link a:hover { text-decoration: underline; }
+.modal-info .original-link { display: none; }
 
 /* ── Empty State ── */
 .empty-state {
@@ -612,25 +607,27 @@ function openItem(id) {
       conversation: 'none',
     }).then(el => {
       if (!el) {
-        player.innerHTML = `<div class="embed-fallback">
-          <p>Couldn't load this post inline.</p>
-          <p style="margin-top:12px"><a href="${escHtml(item.url)}" target="_blank" rel="noopener">Open on X ↗</a></p>
-        </div>`;
+        showEmbedFallback(player, item);
       }
       $('modalTitle').textContent = '';
       $('modalAuthor').textContent = '';
     }).catch(() => {
-      player.innerHTML = `<div class="embed-fallback">
-        <p>Couldn't load this post inline.</p>
-        <p style="margin-top:12px"><a href="${escHtml(item.url)}" target="_blank" rel="noopener">Open on X ↗</a></p>
-      </div>`;
+      showEmbedFallback(player, item);
     });
   } else {
-    player.innerHTML = `<div class="embed-fallback">
-      <p>Embed unavailable.</p>
-      <p style="margin-top:12px"><a href="${escHtml(item.url)}" target="_blank" rel="noopener">Open on X ↗</a></p>
-    </div>`;
+    showEmbedFallback(player, item);
   }
+}
+
+function showEmbedFallback(container, item) {
+  const thumbHtml = item.thumb_path
+    ? `<img src="${escHtml(item.thumb_path)}" style="max-width:100%;border-radius:8px;margin-bottom:12px">`
+    : '';
+  container.innerHTML = `<div class="embed-fallback">
+    ${thumbHtml}
+    <p style="margin-top:8px;color:var(--text);line-height:1.5">${escHtml(item.text || '')}</p>
+    <p style="margin-top:12px;font-size:0.8rem">@${escHtml(item.handle)}</p>
+  </div>`;
 }
 
 function closeModal() {
@@ -714,6 +711,31 @@ $('modal').addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
+
+// Block any navigation away from the site
+window.addEventListener('beforeunload', e => {
+  // Allow normal page loads but this gives a safety net
+});
+
+// Intercept clicks on links that would leave the site
+document.addEventListener('click', e => {
+  const a = e.target.closest('a');
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  if (href.includes('twitter.com') || href.includes('x.com') || href.includes('t.co')) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
+
+// Also block window.open to prevent embedded tweet links opening X
+const _origOpen = window.open;
+window.open = function(url) {
+  if (url && (url.includes('twitter.com') || url.includes('x.com') || url.includes('t.co'))) {
+    return null;
+  }
+  return _origOpen.apply(window, arguments);
+};
 
 // ── Init ──
 renderCategories();
