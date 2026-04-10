@@ -4,6 +4,28 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Cool Videos</title>
+<script>
+// ── LOCKDOWN: must run BEFORE any other scripts ──
+// Force all shadow DOM to be "open" so we can reach inside Twitter's widget
+// to sandbox its iframe. Without this, Twitter uses closed shadow DOM and
+// we can't touch the iframe at all.
+(function() {
+  const _attachShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function(init) {
+    return _attachShadow.call(this, Object.assign({}, init, { mode: 'open' }));
+  };
+
+  // Block ALL popups globally — nothing should open a new window
+  window.open = function() { return null; };
+
+  // Prevent the page itself from navigating away
+  window.addEventListener('beforeunload', function(e) {
+    e.preventDefault();
+    e.returnValue = '';
+    return '';
+  });
+})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,700&display=swap" rel="stylesheet">
 <style>
@@ -314,58 +336,57 @@ body {
   z-index: 210;
   display: flex; align-items: center; justify-content: center;
 }
-.modal-content {
-  padding: 20px;
+.modal #modalPlayer {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 200px;
+  justify-content: center;
 }
-.modal-thumb {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  margin-bottom: 16px;
+.modal #modalPlayer .twitter-tweet-rendered,
+.modal #modalPlayer twitter-widget {
+  margin: 0 auto !important;
+  max-width: 100% !important;
 }
-.modal-thumb img {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  display: block;
+.embed-loading {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 40px 20px;
 }
-.modal-text {
-  font-size: 1rem;
-  line-height: 1.6;
-  color: var(--text);
-  margin-bottom: 16px;
-  white-space: pre-wrap;
-  word-wrap: break-word;
+.embed-loading .spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
 }
-.modal-meta {
+@keyframes spin { to { transform: rotate(360deg); } }
+.embed-fallback {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--text-dim);
+}
+.embed-fallback a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.embed-fallback a:hover { text-decoration: underline; }
+.modal-info { padding: 16px 20px; }
+.modal-info .title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.modal-info .author {
   font-size: 0.8rem;
   color: var(--text-dim);
-  display: flex;
-  justify-content: space-between;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
+  margin-bottom: 8px;
 }
-.modal-tags {
-  display: flex; gap: 6px; flex-wrap: wrap;
-  margin-top: 12px;
-}
-.modal-tags .tag {
-  background: var(--surface-active);
-  padding: 3px 10px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  color: var(--text-dim);
-}
-.modal-no-thumb {
-  width: 100%;
-  aspect-ratio: 16/9;
-  background: var(--surface-active);
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 16px;
-  font-size: 3rem;
-  opacity: 0.3;
-}
+.modal-info .original-link { display: none; }
 
 /* ── Empty State ── */
 .empty-state {
@@ -424,14 +445,20 @@ body {
   </div>
 </div>
 
-<!-- Content Modal -->
+<!-- Player Modal -->
 <div class="modal-overlay" id="modal">
   <button class="modal-close" onclick="closeModal()">×</button>
   <div class="modal">
-    <div class="modal-content" id="modalContent"></div>
+    <div id="modalPlayer"></div>
+    <div class="modal-info">
+      <div class="title" id="modalTitle"></div>
+      <div class="author" id="modalAuthor"></div>
+      <div class="original-link" id="modalLink"></div>
+    </div>
   </div>
 </div>
 
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 <script src="data.js"></script>
 <script>
 const { categories, items } = SITE_DATA;
@@ -573,42 +600,69 @@ function escHtml(s) {
 }
 
 // ── Open Item ──
+function extractTweetId(url) {
+  const m = url.match(/\/status\/(\d+)/);
+  return m ? m[1] : null;
+}
+
 function openItem(id) {
   const item = items.find(i => i.id === id);
   if (!item) return;
 
-  const cat = categories.find(c => c.slug === item.category);
-  const mc = $('modalContent');
+  const tweetId = extractTweetId(item.url);
+  $('modalTitle').textContent = item.text || '';
+  $('modalAuthor').textContent = `@${item.handle}`;
+  $('modalLink').innerHTML = '';
 
-  let thumbHtml;
-  if (item.thumb_path) {
-    thumbHtml = `<div class="modal-thumb"><img src="${escHtml(item.thumb_path)}" alt=""></div>`;
-  } else {
-    thumbHtml = `<div class="modal-no-thumb">${cat ? cat.icon : '📌'}</div>`;
-  }
-
-  const tagHtml = item.tags.map(t => {
-    const tc = categories.find(c => c.slug === t);
-    return `<span class="tag">${tc ? tc.name : t}</span>`;
-  }).join('');
-
-  mc.innerHTML = `
-    ${thumbHtml}
-    <div class="modal-text">${escHtml(item.text || '(no description)')}</div>
-    ${tagHtml ? `<div class="modal-tags">${tagHtml}</div>` : ''}
-    <div class="modal-meta">
-      <span>@${escHtml(item.handle)}</span>
-      <span>${fmtDate(item.date)}</span>
-    </div>
-  `;
+  const player = $('modalPlayer');
+  player.innerHTML = `<div class="embed-loading"><div class="spinner"></div><p>Loading post…</p></div>`;
 
   $('modal').classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  if (tweetId && typeof twttr !== 'undefined' && twttr.widgets) {
+    player.innerHTML = '';
+    twttr.widgets.createTweet(tweetId, player, {
+      theme: 'dark',
+      align: 'center',
+      dnt: true,
+      conversation: 'none',
+    }).then(el => {
+      if (!el) {
+        showEmbedFallback(player, item);
+      } else {
+        // Immediately scan the new widget for iframes to sandbox
+        scanForIframes(player);
+        // Re-scan after a short delay in case the iframe loads lazily
+        setTimeout(() => scanForIframes(player), 500);
+        setTimeout(() => scanForIframes(player), 2000);
+      }
+      $('modalTitle').textContent = '';
+      $('modalAuthor').textContent = '';
+    }).catch(() => {
+      showEmbedFallback(player, item);
+    });
+  } else {
+    showEmbedFallback(player, item);
+  }
+}
+
+function showEmbedFallback(container, item) {
+  const thumbHtml = item.thumb_path
+    ? `<img src="${escHtml(item.thumb_path)}" style="max-width:100%;border-radius:8px;margin-bottom:12px">`
+    : '';
+  container.innerHTML = `<div class="embed-fallback">
+    ${thumbHtml}
+    <p style="margin-top:8px;color:var(--text);line-height:1.5">${escHtml(item.text || '')}</p>
+    <p style="margin-top:12px;font-size:0.8rem">@${escHtml(item.handle)}</p>
+  </div>`;
 }
 
 function closeModal() {
   $('modal').classList.remove('open');
-  $('modalContent').innerHTML = '';
+  $('modalPlayer').innerHTML = '';
+  $('modalTitle').textContent = '';
+  $('modalAuthor').textContent = '';
   document.body.style.overflow = '';
 }
 
@@ -685,6 +739,56 @@ $('modal').addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
+
+// ── Aggressive iframe lockdown ──
+// Twitter's embed creates iframes inside shadow DOM. We forced shadow DOM
+// open (in the <head> script) so we can now reach in and sandbox them.
+const SAFE_SANDBOX = 'allow-scripts allow-same-origin allow-forms';
+
+function sandboxIframe(iframe) {
+  if (iframe._locked) return;
+  iframe.setAttribute('sandbox', SAFE_SANDBOX);
+  iframe._locked = true;
+}
+
+function scanForIframes(root) {
+  // Find all iframes in this root
+  root.querySelectorAll?.('iframe')?.forEach(sandboxIframe);
+  // Traverse into any open shadow roots
+  root.querySelectorAll?.('*')?.forEach(el => {
+    if (el.shadowRoot) {
+      scanForIframes(el.shadowRoot);
+      // Also observe inside shadow roots for dynamically added iframes
+      observeRoot(el.shadowRoot);
+    }
+  });
+}
+
+const observedRoots = new WeakSet();
+
+function observeRoot(root) {
+  if (observedRoots.has(root)) return;
+  observedRoots.add(root);
+  const obs = new MutationObserver(() => scanForIframes(root));
+  obs.observe(root, { childList: true, subtree: true });
+}
+
+// Observe the main document
+observeRoot(document.body);
+
+// Periodic fallback scan — catches anything MutationObserver missed
+setInterval(() => scanForIframes(document.body), 1500);
+
+// Block ALL link clicks to X domains on the parent page
+document.addEventListener('click', e => {
+  const a = e.target.closest('a');
+  if (!a) return;
+  const href = a.getAttribute('href') || '';
+  if (href.includes('twitter.com') || href.includes('x.com') || href.includes('t.co')) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+}, true);
 
 // ── Init ──
 renderCategories();
