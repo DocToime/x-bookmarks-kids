@@ -576,12 +576,7 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
-// ── Open Item (native viewer — no Twitter embeds) ──
-function extractTweetId(url) {
-  const m = url.match(/\/status\/(\d+)/);
-  return m ? m[1] : null;
-}
-
+// ── Open Item (native viewer — video URLs pre-fetched at build time) ──
 function openItem(id) {
   const item = items.find(i => i.id === id);
   if (!item) return;
@@ -590,8 +585,13 @@ function openItem(id) {
   $('modalAuthor').textContent = `@${item.handle} · ${fmtDate(item.date)}`;
   $('modalText').textContent = item.text || '';
 
-  // Show thumbnail immediately while we try to fetch video
-  if (item.thumb_path) {
+  if (item.video_url) {
+    player.innerHTML = `<video controls autoplay playsinline>
+      <source src="${escHtml(item.video_url)}" type="video/mp4">
+    </video>`;
+  } else if (item.hi_res_image) {
+    player.innerHTML = `<img class="modal-thumb" src="${escHtml(item.hi_res_image)}" alt="">`;
+  } else if (item.thumb_path) {
     player.innerHTML = `<img class="modal-thumb" src="${escHtml(item.thumb_path)}" alt="">`;
   } else {
     player.innerHTML = '';
@@ -599,47 +599,6 @@ function openItem(id) {
 
   $('modal').classList.add('open');
   document.body.style.overflow = 'hidden';
-
-  // Try to fetch video from Twitter's syndication API
-  const tweetId = extractTweetId(item.url);
-  if (tweetId) {
-    fetchTweetMedia(tweetId).then(media => {
-      if (media.videoUrl) {
-        player.innerHTML = `<video controls autoplay playsinline>
-          <source src="${escHtml(media.videoUrl)}" type="video/mp4">
-        </video>`;
-      } else if (media.imageUrl) {
-        player.innerHTML = `<img class="modal-thumb" src="${escHtml(media.imageUrl)}" alt="">`;
-      }
-    }).catch(() => {});
-  }
-}
-
-async function fetchTweetMedia(tweetId) {
-  const url = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&token=x`;
-  const resp = await fetch(url);
-  if (!resp.ok) return {};
-  const data = await resp.json();
-  const media = data.mediaDetails || [];
-
-  for (const m of media) {
-    if (m.type === 'video' || m.type === 'animated_gif') {
-      const variants = m.video_info?.variants || [];
-      const mp4s = variants
-        .filter(v => v.content_type === 'video/mp4')
-        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
-      if (mp4s.length > 0) {
-        return { videoUrl: mp4s[0].url };
-      }
-    }
-  }
-
-  for (const m of media) {
-    const imgUrl = m.media_url_https || m.media_url;
-    if (imgUrl) return { imageUrl: imgUrl + '?format=jpg&name=large' };
-  }
-
-  return {};
 }
 
 function closeModal() {
