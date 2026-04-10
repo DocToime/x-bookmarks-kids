@@ -314,23 +314,44 @@ body {
   z-index: 210;
   display: flex; align-items: center; justify-content: center;
 }
-.modal video {
-  width: 100%;
-  border-radius: var(--radius) var(--radius) 0 0;
-  display: block;
-  background: #000;
+.modal #modalPlayer {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 200px;
+  justify-content: center;
 }
-.modal .no-video {
-  padding: 40px 20px;
+.modal #modalPlayer .twitter-tweet-rendered,
+.modal #modalPlayer twitter-widget {
+  margin: 0 auto !important;
+  max-width: 100% !important;
+}
+.embed-loading {
   text-align: center;
   color: var(--text-dim);
+  padding: 40px 20px;
 }
-.modal .no-video a {
+.embed-loading .spinner {
+  width: 32px; height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.embed-fallback {
+  text-align: center;
+  padding: 30px 20px;
+  color: var(--text-dim);
+}
+.embed-fallback a {
   color: var(--accent);
   text-decoration: none;
   font-weight: 600;
 }
-.modal .no-video a:hover { text-decoration: underline; }
+.embed-fallback a:hover { text-decoration: underline; }
 .modal-info { padding: 16px 20px; }
 .modal-info .title {
   font-weight: 600;
@@ -420,6 +441,7 @@ body {
   </div>
 </div>
 
+<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 <script src="data.js"></script>
 <script>
 const { categories, items } = SITE_DATA;
@@ -530,7 +552,7 @@ function renderItems() {
       const cat = categories.find(c => c.slug === item.category);
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
     }
-    const playBadge = '<span class="play-badge">View on X ↗</span>';
+    const playBadge = '<span class="play-badge">▶ View</span>';
     const dur = '';
     const tagHtml = item.tags.map(t => {
       const tc = categories.find(c => c.slug === t);
@@ -561,15 +583,61 @@ function escHtml(s) {
 }
 
 // ── Open Item ──
+function extractTweetId(url) {
+  const m = url.match(/\/status\/(\d+)/);
+  return m ? m[1] : null;
+}
+
 function openItem(id) {
   const item = items.find(i => i.id === id);
   if (!item) return;
-  window.open(item.url, '_blank', 'noopener');
+
+  const tweetId = extractTweetId(item.url);
+  $('modalTitle').textContent = item.text || '';
+  $('modalAuthor').textContent = `@${item.handle}`;
+  $('modalLink').innerHTML = '';
+
+  const player = $('modalPlayer');
+  player.innerHTML = `<div class="embed-loading"><div class="spinner"></div><p>Loading post…</p></div>`;
+
+  $('modal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  if (tweetId && typeof twttr !== 'undefined' && twttr.widgets) {
+    player.innerHTML = '';
+    twttr.widgets.createTweet(tweetId, player, {
+      theme: 'dark',
+      align: 'center',
+      dnt: true,
+      conversation: 'none',
+    }).then(el => {
+      if (!el) {
+        player.innerHTML = `<div class="embed-fallback">
+          <p>Couldn't load this post inline.</p>
+          <p style="margin-top:12px"><a href="${escHtml(item.url)}" target="_blank" rel="noopener">Open on X ↗</a></p>
+        </div>`;
+      }
+      $('modalTitle').textContent = '';
+      $('modalAuthor').textContent = '';
+    }).catch(() => {
+      player.innerHTML = `<div class="embed-fallback">
+        <p>Couldn't load this post inline.</p>
+        <p style="margin-top:12px"><a href="${escHtml(item.url)}" target="_blank" rel="noopener">Open on X ↗</a></p>
+      </div>`;
+    });
+  } else {
+    player.innerHTML = `<div class="embed-fallback">
+      <p>Embed unavailable.</p>
+      <p style="margin-top:12px"><a href="${escHtml(item.url)}" target="_blank" rel="noopener">Open on X ↗</a></p>
+    </div>`;
+  }
 }
 
 function closeModal() {
   $('modal').classList.remove('open');
   $('modalPlayer').innerHTML = '';
+  $('modalTitle').textContent = '';
+  $('modalAuthor').textContent = '';
   document.body.style.overflow = '';
 }
 
@@ -613,7 +681,7 @@ function renderSearchResults(filtered) {
     } else {
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
     }
-    const playBadge = '<span class="play-badge">View on X ↗</span>';
+    const playBadge = '<span class="play-badge">▶ View</span>';
     return `
       <div class="item-card" onclick="openItem(${item.id})">
         <div class="item-thumb">${thumbHtml}${playBadge}</div>
