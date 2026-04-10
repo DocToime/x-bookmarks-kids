@@ -314,57 +314,57 @@ body {
   z-index: 210;
   display: flex; align-items: center; justify-content: center;
 }
-.modal #modalPlayer {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  min-height: 120px;
-  justify-content: center;
+.modal-content {
+  padding: 20px;
 }
-.modal video {
+.modal-thumb {
   width: 100%;
-  max-height: 70vh;
-  background: #000;
-  border-radius: var(--radius) var(--radius) 0 0;
-  display: block;
+  border-radius: var(--radius-sm);
+  margin-bottom: 16px;
 }
-.modal .modal-thumb {
+.modal-thumb img {
   width: 100%;
-  border-radius: var(--radius) var(--radius) 0 0;
+  border-radius: var(--radius-sm);
   display: block;
-}
-.modal-loading {
-  text-align: center;
-  color: var(--text-dim);
-  padding: 40px 20px;
-}
-.modal-loading .spinner {
-  width: 32px; height: 32px;
-  border: 3px solid var(--border);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  margin: 0 auto 12px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.modal-info { padding: 16px 20px; }
-.modal-info .title {
-  font-weight: 600;
-  font-size: 0.95rem;
-  line-height: 1.5;
-  margin-bottom: 8px;
-}
-.modal-info .author {
-  font-size: 0.8rem;
-  color: var(--text-dim);
-  margin-bottom: 8px;
 }
 .modal-text {
-  padding: 16px 20px;
-  font-size: 0.95rem;
+  font-size: 1rem;
   line-height: 1.6;
   color: var(--text);
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+.modal-meta {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  display: flex;
+  justify-content: space-between;
+  padding-top: 12px;
   border-top: 1px solid var(--border);
+}
+.modal-tags {
+  display: flex; gap: 6px; flex-wrap: wrap;
+  margin-top: 12px;
+}
+.modal-tags .tag {
+  background: var(--surface-active);
+  padding: 3px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+.modal-no-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--surface-active);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  font-size: 3rem;
+  opacity: 0.3;
 }
 
 /* ── Empty State ── */
@@ -424,15 +424,11 @@ body {
   </div>
 </div>
 
-<!-- Player Modal -->
+<!-- Content Modal -->
 <div class="modal-overlay" id="modal">
   <button class="modal-close" onclick="closeModal()">×</button>
   <div class="modal">
-    <div id="modalPlayer"></div>
-    <div class="modal-info">
-      <div class="author" id="modalAuthor"></div>
-    </div>
-    <div class="modal-text" id="modalText"></div>
+    <div class="modal-content" id="modalContent"></div>
   </div>
 </div>
 
@@ -576,26 +572,35 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
-// ── Open Item (native viewer — video URLs pre-fetched at build time) ──
+// ── Open Item ──
 function openItem(id) {
   const item = items.find(i => i.id === id);
   if (!item) return;
 
-  const player = $('modalPlayer');
-  $('modalAuthor').textContent = `@${item.handle} · ${fmtDate(item.date)}`;
-  $('modalText').textContent = item.text || '';
+  const cat = categories.find(c => c.slug === item.category);
+  const mc = $('modalContent');
 
-  if (item.video_url) {
-    player.innerHTML = `<video controls autoplay playsinline>
-      <source src="${escHtml(item.video_url)}" type="video/mp4">
-    </video>`;
-  } else if (item.hi_res_image) {
-    player.innerHTML = `<img class="modal-thumb" src="${escHtml(item.hi_res_image)}" alt="">`;
-  } else if (item.thumb_path) {
-    player.innerHTML = `<img class="modal-thumb" src="${escHtml(item.thumb_path)}" alt="">`;
+  let thumbHtml;
+  if (item.thumb_path) {
+    thumbHtml = `<div class="modal-thumb"><img src="${escHtml(item.thumb_path)}" alt=""></div>`;
   } else {
-    player.innerHTML = '';
+    thumbHtml = `<div class="modal-no-thumb">${cat ? cat.icon : '📌'}</div>`;
   }
+
+  const tagHtml = item.tags.map(t => {
+    const tc = categories.find(c => c.slug === t);
+    return `<span class="tag">${tc ? tc.name : t}</span>`;
+  }).join('');
+
+  mc.innerHTML = `
+    ${thumbHtml}
+    <div class="modal-text">${escHtml(item.text || '(no description)')}</div>
+    ${tagHtml ? `<div class="modal-tags">${tagHtml}</div>` : ''}
+    <div class="modal-meta">
+      <span>@${escHtml(item.handle)}</span>
+      <span>${fmtDate(item.date)}</span>
+    </div>
+  `;
 
   $('modal').classList.add('open');
   document.body.style.overflow = 'hidden';
@@ -603,12 +608,7 @@ function openItem(id) {
 
 function closeModal() {
   $('modal').classList.remove('open');
-  const player = $('modalPlayer');
-  const video = player.querySelector('video');
-  if (video) video.pause();
-  player.innerHTML = '';
-  $('modalAuthor').textContent = '';
-  $('modalText').textContent = '';
+  $('modalContent').innerHTML = '';
   document.body.style.overflow = '';
 }
 
