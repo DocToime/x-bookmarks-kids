@@ -315,24 +315,30 @@ body {
   display: flex; align-items: center; justify-content: center;
 }
 .modal #modalPlayer {
-  padding: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-height: 200px;
+  min-height: 120px;
   justify-content: center;
 }
-.modal #modalPlayer .twitter-tweet-rendered,
-.modal #modalPlayer twitter-widget {
-  margin: 0 auto !important;
-  max-width: 100% !important;
+.modal video {
+  width: 100%;
+  max-height: 70vh;
+  background: #000;
+  border-radius: var(--radius) var(--radius) 0 0;
+  display: block;
 }
-.embed-loading {
+.modal .modal-thumb {
+  width: 100%;
+  border-radius: var(--radius) var(--radius) 0 0;
+  display: block;
+}
+.modal-loading {
   text-align: center;
   color: var(--text-dim);
   padding: 40px 20px;
 }
-.embed-loading .spinner {
+.modal-loading .spinner {
   width: 32px; height: 32px;
   border: 3px solid var(--border);
   border-top-color: var(--accent);
@@ -341,17 +347,6 @@ body {
   margin: 0 auto 12px;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.embed-fallback {
-  text-align: center;
-  padding: 30px 20px;
-  color: var(--text-dim);
-}
-.embed-fallback a {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
-}
-.embed-fallback a:hover { text-decoration: underline; }
 .modal-info { padding: 16px 20px; }
 .modal-info .title {
   font-weight: 600;
@@ -364,7 +359,13 @@ body {
   color: var(--text-dim);
   margin-bottom: 8px;
 }
-.modal-info .original-link { display: none; }
+.modal-text {
+  padding: 16px 20px;
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--text);
+  border-top: 1px solid var(--border);
+}
 
 /* ── Empty State ── */
 .empty-state {
@@ -429,14 +430,12 @@ body {
   <div class="modal">
     <div id="modalPlayer"></div>
     <div class="modal-info">
-      <div class="title" id="modalTitle"></div>
       <div class="author" id="modalAuthor"></div>
-      <div class="original-link" id="modalLink"></div>
     </div>
+    <div class="modal-text" id="modalText"></div>
   </div>
 </div>
 
-<script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 <script src="data.js"></script>
 <script>
 const { categories, items } = SITE_DATA;
@@ -577,7 +576,7 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
-// ── Open Item ──
+// ── Open Item (native viewer — no Twitter embeds) ──
 function extractTweetId(url) {
   const m = url.match(/\/status\/(\d+)/);
   return m ? m[1] : null;
@@ -587,54 +586,70 @@ function openItem(id) {
   const item = items.find(i => i.id === id);
   if (!item) return;
 
-  const tweetId = extractTweetId(item.url);
-  $('modalTitle').textContent = item.text || '';
-  $('modalAuthor').textContent = `@${item.handle}`;
-  $('modalLink').innerHTML = '';
-
   const player = $('modalPlayer');
-  player.innerHTML = `<div class="embed-loading"><div class="spinner"></div><p>Loading post…</p></div>`;
+  $('modalAuthor').textContent = `@${item.handle} · ${fmtDate(item.date)}`;
+  $('modalText').textContent = item.text || '';
+
+  // Show thumbnail immediately while we try to fetch video
+  if (item.thumb_path) {
+    player.innerHTML = `<img class="modal-thumb" src="${escHtml(item.thumb_path)}" alt="">`;
+  } else {
+    player.innerHTML = '';
+  }
 
   $('modal').classList.add('open');
   document.body.style.overflow = 'hidden';
 
-  if (tweetId && typeof twttr !== 'undefined' && twttr.widgets) {
-    player.innerHTML = '';
-    twttr.widgets.createTweet(tweetId, player, {
-      theme: 'dark',
-      align: 'center',
-      dnt: true,
-      conversation: 'none',
-    }).then(el => {
-      if (!el) {
-        showEmbedFallback(player, item);
+  // Try to fetch video from Twitter's syndication API
+  const tweetId = extractTweetId(item.url);
+  if (tweetId) {
+    fetchTweetMedia(tweetId).then(media => {
+      if (media.videoUrl) {
+        player.innerHTML = `<video controls autoplay playsinline>
+          <source src="${escHtml(media.videoUrl)}" type="video/mp4">
+        </video>`;
+      } else if (media.imageUrl) {
+        player.innerHTML = `<img class="modal-thumb" src="${escHtml(media.imageUrl)}" alt="">`;
       }
-      $('modalTitle').textContent = '';
-      $('modalAuthor').textContent = '';
-    }).catch(() => {
-      showEmbedFallback(player, item);
-    });
-  } else {
-    showEmbedFallback(player, item);
+    }).catch(() => {});
   }
 }
 
-function showEmbedFallback(container, item) {
-  const thumbHtml = item.thumb_path
-    ? `<img src="${escHtml(item.thumb_path)}" style="max-width:100%;border-radius:8px;margin-bottom:12px">`
-    : '';
-  container.innerHTML = `<div class="embed-fallback">
-    ${thumbHtml}
-    <p style="margin-top:8px;color:var(--text);line-height:1.5">${escHtml(item.text || '')}</p>
-    <p style="margin-top:12px;font-size:0.8rem">@${escHtml(item.handle)}</p>
-  </div>`;
+async function fetchTweetMedia(tweetId) {
+  const url = `https://cdn.syndication.twimg.com/tweet-result?id=${tweetId}&token=x`;
+  const resp = await fetch(url);
+  if (!resp.ok) return {};
+  const data = await resp.json();
+  const media = data.mediaDetails || [];
+
+  for (const m of media) {
+    if (m.type === 'video' || m.type === 'animated_gif') {
+      const variants = m.video_info?.variants || [];
+      const mp4s = variants
+        .filter(v => v.content_type === 'video/mp4')
+        .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+      if (mp4s.length > 0) {
+        return { videoUrl: mp4s[0].url };
+      }
+    }
+  }
+
+  for (const m of media) {
+    const imgUrl = m.media_url_https || m.media_url;
+    if (imgUrl) return { imageUrl: imgUrl + '?format=jpg&name=large' };
+  }
+
+  return {};
 }
 
 function closeModal() {
   $('modal').classList.remove('open');
-  $('modalPlayer').innerHTML = '';
-  $('modalTitle').textContent = '';
+  const player = $('modalPlayer');
+  const video = player.querySelector('video');
+  if (video) video.pause();
+  player.innerHTML = '';
   $('modalAuthor').textContent = '';
+  $('modalText').textContent = '';
   document.body.style.overflow = '';
 }
 
@@ -711,49 +726,6 @@ $('modal').addEventListener('click', e => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
-
-// ── Sandbox Twitter iframes ──
-// Twitter's widget.js creates iframes for embeds. By default they can
-// open popups and navigate the top window. We strip those permissions
-// so the embed still renders/plays video but can't escape to X.
-const SAFE_SANDBOX = 'allow-scripts allow-same-origin allow-forms';
-
-function lockdownIframe(iframe) {
-  const src = iframe.getAttribute('src') || '';
-  if (src.includes('twitter.com') || src.includes('x.com') || src.includes('platform.twitter.com')) {
-    iframe.setAttribute('sandbox', SAFE_SANDBOX);
-  }
-}
-
-const iframeObserver = new MutationObserver(mutations => {
-  for (const m of mutations) {
-    for (const node of m.addedNodes) {
-      if (node.nodeType !== 1) continue;
-      if (node.tagName === 'IFRAME') lockdownIframe(node);
-      node.querySelectorAll?.('iframe')?.forEach(lockdownIframe);
-    }
-  }
-});
-iframeObserver.observe(document.body, { childList: true, subtree: true });
-
-// Also block window.open and link clicks on the parent page as a belt-and-braces measure
-const _origOpen = window.open;
-window.open = function(url) {
-  if (url && (url.includes('twitter.com') || url.includes('x.com') || url.includes('t.co'))) {
-    return null;
-  }
-  return _origOpen.apply(window, arguments);
-};
-
-document.addEventListener('click', e => {
-  const a = e.target.closest('a');
-  if (!a) return;
-  const href = a.getAttribute('href') || '';
-  if (href.includes('twitter.com') || href.includes('x.com') || href.includes('t.co')) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-}, true);
 
 // ── Init ──
 renderCategories();
