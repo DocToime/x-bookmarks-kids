@@ -712,12 +712,39 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeModal();
 });
 
-// Block any navigation away from the site
-window.addEventListener('beforeunload', e => {
-  // Allow normal page loads but this gives a safety net
-});
+// ── Sandbox Twitter iframes ──
+// Twitter's widget.js creates iframes for embeds. By default they can
+// open popups and navigate the top window. We strip those permissions
+// so the embed still renders/plays video but can't escape to X.
+const SAFE_SANDBOX = 'allow-scripts allow-same-origin allow-forms';
 
-// Intercept clicks on links that would leave the site
+function lockdownIframe(iframe) {
+  const src = iframe.getAttribute('src') || '';
+  if (src.includes('twitter.com') || src.includes('x.com') || src.includes('platform.twitter.com')) {
+    iframe.setAttribute('sandbox', SAFE_SANDBOX);
+  }
+}
+
+const iframeObserver = new MutationObserver(mutations => {
+  for (const m of mutations) {
+    for (const node of m.addedNodes) {
+      if (node.nodeType !== 1) continue;
+      if (node.tagName === 'IFRAME') lockdownIframe(node);
+      node.querySelectorAll?.('iframe')?.forEach(lockdownIframe);
+    }
+  }
+});
+iframeObserver.observe(document.body, { childList: true, subtree: true });
+
+// Also block window.open and link clicks on the parent page as a belt-and-braces measure
+const _origOpen = window.open;
+window.open = function(url) {
+  if (url && (url.includes('twitter.com') || url.includes('x.com') || url.includes('t.co'))) {
+    return null;
+  }
+  return _origOpen.apply(window, arguments);
+};
+
 document.addEventListener('click', e => {
   const a = e.target.closest('a');
   if (!a) return;
@@ -727,15 +754,6 @@ document.addEventListener('click', e => {
     e.stopPropagation();
   }
 }, true);
-
-// Also block window.open to prevent embedded tweet links opening X
-const _origOpen = window.open;
-window.open = function(url) {
-  if (url && (url.includes('twitter.com') || url.includes('x.com') || url.includes('t.co'))) {
-    return null;
-  }
-  return _origOpen.apply(window, arguments);
-};
 
 // ── Init ──
 renderCategories();
