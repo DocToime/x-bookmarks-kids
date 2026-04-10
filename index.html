@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cool Videos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root {
+  --bg: #0f0f13;
+  --surface: #1a1a22;
+  --surface-hover: #24242f;
+  --surface-active: #2e2e3a;
+  --border: #2a2a36;
+  --text: #e8e6f0;
+  --text-dim: #9896a8;
+  --accent: #6c63ff;
+  --accent-glow: rgba(108,99,255,0.25);
+  --green: #4ade80;
+  --orange: #fb923c;
+  --red: #f87171;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+
+html { font-size: 16px; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Top Bar ── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px;
+  background: rgba(15,15,19,0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar h1 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.topbar h1 span { color: var(--accent); }
+.search-box {
+  flex: 1; max-width: 400px;
+  position: relative;
+}
+.search-box input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit; font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.search-box input:focus { border-color: var(--accent); }
+.search-box::before {
+  content: '⌕';
+  position: absolute; left: 12px; top: 10px;
+  color: var(--text-dim); font-size: 1.1rem;
+  pointer-events: none;
+}
+.search-pills {
+  display: flex; gap: 4px; margin-top: 5px; flex-wrap: wrap;
+}
+.search-pill {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.search-pill.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.search-pill:hover:not(.active) {
+  border-color: var(--text-dim);
+}
+.spacer { flex: 1; }
+.kid-toggle {
+  display: flex; align-items: center; gap: 8px;
+  cursor: pointer; user-select: none;
+  font-size: 0.85rem; color: var(--text-dim);
+  white-space: nowrap;
+}
+.kid-toggle input { display: none; }
+.kid-toggle .switch {
+  width: 40px; height: 22px;
+  background: var(--surface-active);
+  border-radius: 11px;
+  position: relative;
+  transition: background 0.25s;
+}
+.kid-toggle .switch::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  top: 3px; left: 3px;
+  transition: transform 0.25s, background 0.25s;
+}
+.kid-toggle input:checked + .switch {
+  background: var(--green);
+}
+.kid-toggle input:checked + .switch::after {
+  transform: translateX(18px);
+  background: #fff;
+}
+
+/* ── Layout ── */
+.container { padding: 24px 20px 60px; max-width: 1200px; margin: 0 auto; }
+
+/* ── Category Grid ── */
+.cat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 32px;
+}
+.cat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 14px;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s, box-shadow 0.2s;
+  text-align: center;
+}
+.cat-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+.cat-card.active {
+  border-color: var(--accent);
+  background: var(--surface-hover);
+  box-shadow: 0 0 0 2px var(--accent-glow);
+}
+.cat-card .icon { font-size: 1.8rem; margin-bottom: 6px; }
+.cat-card .name { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
+.cat-card .count { font-size: 0.75rem; color: var(--text-dim); }
+.cat-card .video-badge {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 4px;
+}
+.cat-card.hidden { display: none; }
+
+/* ── Section Header ── */
+.section-header {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.section-header h2 {
+  font-family: 'Fraunces', serif;
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+.section-header .badge {
+  background: var(--surface-active);
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.back-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 6px 14px;
+  font: inherit; font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.back-btn:hover { background: var(--surface-hover); }
+
+/* ── Item Grid ── */
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+.item-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.2s;
+}
+.item-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+.item-thumb {
+  width: 100%;
+  aspect-ratio: 16/9;
+  background: var(--surface-active);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+.item-thumb img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.item-thumb .placeholder {
+  font-size: 2.5rem;
+  opacity: 0.3;
+}
+.item-thumb .play-badge {
+  position: absolute;
+  bottom: 8px; right: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+.item-thumb .duration {
+  position: absolute;
+  bottom: 8px; left: 8px;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.item-body { padding: 12px 14px; }
+.item-body .text {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.item-body .meta {
+  display: flex; justify-content: space-between;
+  font-size: 0.75rem; color: var(--text-dim);
+}
+.item-body .tags {
+  display: flex; gap: 4px; flex-wrap: wrap;
+  margin-top: 6px;
+}
+.item-body .tag {
+  background: var(--surface-active);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  color: var(--text-dim);
+}
+
+/* ── Player Modal ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  max-width: 800px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-close {
+  position: absolute; top: 16px; right: 16px;
+  background: rgba(0,0,0,0.6);
+  border: none;
+  color: #fff;
+  font-size: 1.5rem;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  z-index: 210;
+  display: flex; align-items: center; justify-content: center;
+}
+.modal video {
+  width: 100%;
+  border-radius: var(--radius) var(--radius) 0 0;
+  display: block;
+  background: #000;
+}
+.modal .no-video {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.modal .no-video a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.modal .no-video a:hover { text-decoration: underline; }
+.modal-info { padding: 16px 20px; }
+.modal-info .title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin-bottom: 8px;
+}
+.modal-info .author {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+.modal-info .original-link a {
+  color: var(--accent);
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+.modal-info .original-link a:hover { text-decoration: underline; }
+
+/* ── Empty State ── */
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-dim);
+}
+.empty-state .big-icon { font-size: 3rem; margin-bottom: 12px; }
+
+/* ── Responsive ── */
+@media (max-width: 600px) {
+  .topbar { padding: 10px 14px; gap: 8px; }
+  .topbar h1 { font-size: 1.1rem; }
+  .container { padding: 16px 14px 40px; }
+  .cat-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+  .cat-card { padding: 12px 10px; }
+  .cat-card .icon { font-size: 1.4rem; }
+  .item-grid { grid-template-columns: 1fr; }
+  .modal { max-width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1><span>▶</span> Cool Videos</h1>
+  <div class="search-box">
+    <input type="text" id="searchInput" placeholder="Search bookmarks…" autocomplete="off">
+    <div class="search-pills">
+      <button class="search-pill active" data-scope="text" onclick="toggleScope(this)">Text</button>
+      <button class="search-pill active" data-scope="author" onclick="toggleScope(this)">Author</button>
+      <button class="search-pill" data-scope="tags" onclick="toggleScope(this)">Tags</button>
+      <button class="search-pill active" data-scope="whole" onclick="toggleScope(this)">Whole word</button>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <span id="kidMode" style="display:none"></span>
+</div>
+
+<div class="container">
+  <!-- Category Grid -->
+  <div id="catGrid" class="cat-grid"></div>
+
+  <!-- Items View -->
+  <div id="itemsView" style="display:none">
+    <div class="section-header">
+      <button class="back-btn" onclick="showCategories()">← Back</button>
+      <h2 id="sectionTitle"></h2>
+      <span class="badge" id="sectionCount"></span>
+    </div>
+    <div id="itemGrid" class="item-grid"></div>
+    <div id="emptyState" class="empty-state" style="display:none">
+      <div class="big-icon">🔍</div>
+      <p>No bookmarks match your search.</p>
+    </div>
+  </div>
+</div>
+
+<!-- Player Modal -->
+<div class="modal-overlay" id="modal">
+  <button class="modal-close" onclick="closeModal()">×</button>
+  <div class="modal">
+    <div id="modalPlayer"></div>
+    <div class="modal-info">
+      <div class="title" id="modalTitle"></div>
+      <div class="author" id="modalAuthor"></div>
+      <div class="original-link" id="modalLink"></div>
+    </div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script>
+const { categories, items } = SITE_DATA;
+
+let currentCat = null;
+let kidMode = false;
+let searchQuery = '';
+const searchScopes = { text: true, author: true, tags: false, whole: true };
+
+const $ = id => document.getElementById(id);
+
+function toggleScope(el) {
+  const scope = el.dataset.scope;
+  searchScopes[scope] = !searchScopes[scope];
+  el.classList.toggle('active', searchScopes[scope]);
+  // Re-trigger search if there's a query
+  if (searchQuery) $('searchInput').dispatchEvent(new Event('input'));
+}
+
+function matchesQuery(str, q) {
+  if (!str) return false;
+  if (searchScopes.whole) {
+    try {
+      return new RegExp('\\b' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(str);
+    } catch { return str.toLowerCase().includes(q.toLowerCase()); }
+  }
+  return str.toLowerCase().includes(q.toLowerCase());
+}
+
+function itemMatchesSearch(i, q) {
+  if (searchScopes.text && matchesQuery(i.text, q)) return true;
+  if (searchScopes.author && (matchesQuery(i.handle, q) || matchesQuery(i.author, q))) return true;
+  if (searchScopes.tags && (i.tags.some(t => matchesQuery(t, q)) || matchesQuery(i.category, q))) return true;
+  return false;
+}
+
+// ── Helpers ──
+function fmtDuration(s) {
+  if (!s) return '';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  try { return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); }
+  catch { return ''; }
+}
+
+// ── Category Grid ──
+function renderCategories() {
+  const grid = $('catGrid');
+  grid.innerHTML = categories.map(c => {
+    const hidden = kidMode && !c.kid_safe ? 'hidden' : '';
+    const videoBadge = c.video_count > 0
+      ? `<span class="video-badge">${c.video_count} with preview</span>`
+      : '';
+    return `
+      <div class="cat-card ${hidden}" onclick="selectCategory('${c.slug}')">
+        <div class="icon">${c.icon}</div>
+        <div class="name">${c.name}</div>
+        <div class="count">${c.count} bookmarks ${videoBadge}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── Items Grid ──
+function selectCategory(slug) {
+  currentCat = slug;
+  const cat = categories.find(c => c.slug === slug);
+  $('sectionTitle').textContent = `${cat.icon} ${cat.name}`;
+  $('catGrid').style.display = 'none';
+  $('itemsView').style.display = 'block';
+  renderItems();
+}
+
+function showCategories() {
+  currentCat = null;
+  $('catGrid').style.display = '';
+  $('itemsView').style.display = 'none';
+  $('searchInput').value = '';
+  searchQuery = '';
+  renderCategories();
+}
+
+function renderItems() {
+  let filtered = items.filter(i => i.category === currentCat);
+  if (kidMode) filtered = filtered.filter(i => !i.risque);
+  if (searchQuery) {
+    filtered = filtered.filter(i => itemMatchesSearch(i, searchQuery));
+  }
+
+  $('sectionCount').textContent = `${filtered.length} items`;
+
+  if (filtered.length === 0) {
+    $('itemGrid').innerHTML = '';
+    $('emptyState').style.display = '';
+    return;
+  }
+  $('emptyState').style.display = 'none';
+
+  $('itemGrid').innerHTML = filtered.map(item => {
+    let thumbHtml;
+    if (item.thumb_path) {
+      thumbHtml = `<img src="${item.thumb_path}" alt="" loading="lazy">`;
+    } else {
+      const cat = categories.find(c => c.slug === item.category);
+      thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
+    }
+    const playBadge = '<span class="play-badge">View on X ↗</span>';
+    const dur = '';
+    const tagHtml = item.tags.map(t => {
+      const tc = categories.find(c => c.slug === t);
+      return `<span class="tag">${tc ? tc.name : t}</span>`;
+    }).join('');
+
+    return `
+      <div class="item-card" onclick="openItem(${item.id})">
+        <div class="item-thumb">
+          ${thumbHtml}${playBadge}${dur}
+        </div>
+        <div class="item-body">
+          <div class="text">${escHtml(item.text || '(no description)')}</div>
+          <div class="meta">
+            <span>@${escHtml(item.handle)}</span>
+            <span>${fmtDate(item.date)}</span>
+          </div>
+          ${tagHtml ? `<div class="tags">${tagHtml}</div>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ── Open Item ──
+function openItem(id) {
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  window.open(item.url, '_blank', 'noopener');
+}
+
+function closeModal() {
+  $('modal').classList.remove('open');
+  $('modalPlayer').innerHTML = '';
+  document.body.style.overflow = '';
+}
+
+// ── Events ──
+$('searchInput').addEventListener('input', e => {
+  searchQuery = e.target.value;
+  if (currentCat && currentCat !== '__search__') {
+    renderItems();
+  } else {
+    if (searchQuery.length >= 2) {
+      const q = searchQuery.toLowerCase();
+      const matching = items.filter(i =>
+        (!kidMode || !i.risque) &&
+        (!kidMode || categories.find(c => c.slug === i.category)?.kid_safe !== false) &&
+        itemMatchesSearch(i, q)
+      );
+      currentCat = '__search__';
+      $('sectionTitle').textContent = '🔍 Search Results';
+      $('catGrid').style.display = 'none';
+      $('itemsView').style.display = 'block';
+      renderSearchResults(matching);
+    } else {
+      if (currentCat === '__search__') showCategories();
+    }
+  }
+});
+
+function renderSearchResults(filtered) {
+  $('sectionCount').textContent = `${filtered.length} results`;
+  if (filtered.length === 0) {
+    $('itemGrid').innerHTML = '';
+    $('emptyState').style.display = '';
+    return;
+  }
+  $('emptyState').style.display = 'none';
+  $('itemGrid').innerHTML = filtered.map(item => {
+    const cat = categories.find(c => c.slug === item.category);
+    let thumbHtml;
+    if (item.thumb_path) {
+      thumbHtml = `<img src="${item.thumb_path}" alt="" loading="lazy">`;
+    } else {
+      thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
+    }
+    const playBadge = '<span class="play-badge">View on X ↗</span>';
+    return `
+      <div class="item-card" onclick="openItem(${item.id})">
+        <div class="item-thumb">${thumbHtml}${playBadge}</div>
+        <div class="item-body">
+          <div class="text">${escHtml(item.text || '(no description)')}</div>
+          <div class="meta">
+            <span>@${escHtml(item.handle)} · ${cat ? cat.name : ''}</span>
+            <span>${fmtDate(item.date)}</span>
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+$('kidMode').addEventListener('change', e => {
+  kidMode = e.target.checked;
+  if (currentCat && currentCat !== '__search__') {
+    const cat = categories.find(c => c.slug === currentCat);
+    if (cat && !cat.kid_safe) showCategories();
+    else renderItems();
+  } else {
+    showCategories();
+  }
+});
+
+$('modal').addEventListener('click', e => {
+  if (e.target === $('modal')) closeModal();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeModal();
+});
+
+// ── Init ──
+renderCategories();
+</script>
+</body>
+</html>
