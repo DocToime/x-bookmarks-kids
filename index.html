@@ -182,17 +182,7 @@ body {
 }
 .cat-card .icon { font-size: 1.8rem; margin-bottom: 6px; }
 .cat-card .name { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
-.cat-card .count { font-size: 0.75rem; color: var(--text-dim); }
-.cat-card .video-badge {
-  display: inline-block;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.65rem;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-left: 4px;
-}
+.cat-card .count { font-size: 0.8rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .cat-card.hidden { display: none; }
 
 /* ── Section Header ── */
@@ -545,15 +535,34 @@ body {
 .empty-state .big-icon { font-size: 3rem; margin-bottom: 12px; }
 
 /* ── Responsive ── */
-@media (max-width: 600px) {
-  .topbar { padding: 10px 14px; gap: 8px; }
-  .topbar h1 { font-size: 1.1rem; }
-  .container { padding: 16px 14px 40px; }
-  .cat-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
-  .cat-card { padding: 12px 10px; }
-  .cat-card .icon { font-size: 1.4rem; }
-  .item-grid { grid-template-columns: 1fr; }
+@media (max-width: 700px) {
+  .topbar {
+    flex-wrap: wrap;
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .topbar h1 { font-size: 1.05rem; flex: 0 0 auto; }
+  .search-box { order: 3; flex: 1 1 100%; max-width: 100%; }
+  .search-box input { padding: 10px 12px 10px 36px; font-size: 0.95rem; }
+  .spacer { display: none; }
+  .kid-toggle { margin-left: auto; font-size: 0.8rem; }
+  .search-pills { gap: 6px; margin-top: 6px; }
+  .search-pill { font-size: 0.72rem; padding: 4px 10px; border-radius: 12px; }
+  .container { padding: 16px 12px 40px; }
+  .cat-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .cat-card { padding: 14px 10px; }
+  .cat-card .icon { font-size: 1.55rem; margin-bottom: 4px; }
+  .cat-card .name { font-size: 0.85rem; }
+  .item-grid { grid-template-columns: 1fr; gap: 12px; }
+  .section-header { flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .section-header h2 { font-size: 1.25rem; }
+  .modal-overlay { padding: 10px; }
   .modal { max-width: 100%; }
+  .modal-info { padding: 14px 16px; }
+}
+@media (max-width: 400px) {
+  .lucky-dip-bar button { min-width: 96px; font-size: 0.9rem; padding: 0 14px; }
+  .cat-grid { grid-template-columns: repeat(2, 1fr); }
 }
 </style>
 </head>
@@ -1016,30 +1025,27 @@ function renderCategories() {
     ? `<div class="cat-card" onclick="startLuckyDip()">
       <div class="icon">🎲</div>
       <div class="name">Lucky Dip</div>
-      <div class="count">Random fun</div>
+      <div class="count">Random</div>
     </div>`
     : '';
   const virtual = `
     <div class="cat-card" onclick="selectCategory('__recent__')">
       <div class="icon">🕐</div>
       <div class="name">Recently viewed</div>
-      <div class="count">${nr} saved</div>
+      <div class="count">${nr}</div>
     </div>
     <div class="cat-card" onclick="selectCategory('__fav__')">
       <div class="icon">⭐</div>
       <div class="name">Favourites</div>
-      <div class="count">${nf} saved</div>
+      <div class="count">${nf}</div>
     </div>${luckyCard}`;
   grid.innerHTML = virtual + categories.map(c => {
     const hidden = kidMode && !c.kid_safe ? 'hidden' : '';
-    const videoBadge = c.video_count > 0
-      ? `<span class="video-badge">${c.video_count} with preview</span>`
-      : '';
     return `
       <div class="cat-card ${hidden}" onclick="selectCategory('${c.slug}')">
         <div class="icon">${c.icon}</div>
         <div class="name">${c.name}</div>
-        <div class="count">${c.count} bookmarks ${videoBadge}</div>
+        <div class="count">${c.count}</div>
       </div>`;
   }).join('');
 }
@@ -1106,8 +1112,8 @@ function renderItems() {
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
     }
     const playBadge = item.has_video
-      ? '<span class="play-badge">▶ VIDEO</span>'
-      : '<span class="play-badge">▶ View</span>';
+      ? '<span class="play-badge">▶</span>'
+      : '';
     const dur = '';
     const tagHtml = item.tags.map(t => {
       const tc = categories.find(c => c.slug === t);
@@ -1365,8 +1371,8 @@ function renderSearchResults(filtered) {
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
     }
     const playBadge = item.has_video
-      ? '<span class="play-badge">▶ VIDEO</span>'
-      : '<span class="play-badge">▶ View</span>';
+      ? '<span class="play-badge">▶</span>'
+      : '';
     const fav = favSet.has(normUrl(item.url));
     return `
       <div class="item-card" onclick="openItem(${item.id})">
