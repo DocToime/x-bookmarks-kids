@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- Kids site shell: edit this file. build_kids_site.py copies it to website-kids/index.html. -->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -626,7 +627,6 @@ const LS_RECENT = 'bookmarksLibKids:recent:v1';
 const RECENT_CAP = 80;
 const KID_BUILD = SITE_DATA.kid_build === true;
 const LUCKY_RECENT_MS = 4000;
-const LUCKY_VIDEO_ONLY = true;
 
 let currentCat = null;
 let kidMode = false;
@@ -833,9 +833,7 @@ function pickRandomFrom(arr) {
 }
 
 function luckyPoolItemsSource() {
-  return items.filter(i =>
-    itemPassesKidMode(i) && (!LUCKY_VIDEO_ONLY || (i.has_video && i.video_path))
-  );
+  return items.filter(i => itemPassesKidMode(i));
 }
 
 function buildLuckyDipPool() {
@@ -857,7 +855,6 @@ function pickFromOldestHalf() {
     const it = byNormUrl.get(u);
     if (!it) continue;
     if (!itemPassesKidMode(it)) continue;
-    if (LUCKY_VIDEO_ONLY && (!it.has_video || !it.video_path)) continue;
     if (seen.has(it.id)) continue;
     seen.add(it.id);
     candidates.push(it);
@@ -945,7 +942,7 @@ function scheduleLuckyDipPreload() {
 function startLuckyDip() {
   const { item, hint } = pickLuckyDipItem();
   if (!item) {
-    alert('No videos available for Lucky Dip yet.');
+    alert('No bookmarks available for Lucky Dip yet.');
     return;
   }
   luckyDipActive = true;
@@ -986,7 +983,7 @@ function luckyDipNext() {
   }
   const { item, hint } = pickLuckyDipItem();
   if (!item) {
-    alert('No more items available.');
+    alert('No more bookmarks available.');
     return;
   }
   const hintEl = $('luckyDipFallbackHint');
@@ -1208,12 +1205,8 @@ function openItem(id, options = {}) {
   }
 
   const modalEl = $('modal');
-  if (item.has_video && item.video_path) {
-    if (luckyDipActive) {
-      modalEl.classList.add('lucky-dip-immersive');
-    } else {
-      modalEl.classList.remove('lucky-dip-immersive');
-    }
+  if (luckyDipActive) {
+    modalEl.classList.add('lucky-dip-immersive');
   } else {
     modalEl.classList.remove('lucky-dip-immersive');
   }
@@ -1234,7 +1227,7 @@ function openItem(id, options = {}) {
       const ann = $('luckyDipAnnouncer');
       if (ann) {
         const t = item.text || 'bookmark';
-        ann.textContent = 'Now playing: ' + t.slice(0, 200);
+        ann.textContent = 'Lucky dip — now showing: ' + t.slice(0, 200);
       }
       scheduleLuckyDipPreload();
     }
@@ -1253,6 +1246,15 @@ function openItem(id, options = {}) {
 
   modalEl.classList.add('open');
   document.body.style.overflow = 'hidden';
+  syncLuckyDipChrome();
+  if (luckyDipActive) {
+    const ann = $('luckyDipAnnouncer');
+    if (ann) {
+      const t = item.text || 'bookmark';
+      ann.textContent = 'Lucky dip — now showing: ' + t.slice(0, 200);
+    }
+    scheduleLuckyDipPreload();
+  }
 
   if (tweetId && typeof twttr !== 'undefined' && twttr.widgets) {
     player.innerHTML = '';
