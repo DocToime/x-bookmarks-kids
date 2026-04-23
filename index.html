@@ -278,6 +278,27 @@ body {
   padding: 2px 6px;
   border-radius: 4px;
 }
+.item-fav-star {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0,0,0,0.55);
+  color: var(--text-dim);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.item-fav-star:hover { color: #fff; }
+.item-fav-star.on { color: var(--orange); }
 .item-body { padding: 12px 14px; }
 .item-body .text {
   font-size: 0.85rem;
@@ -375,18 +396,37 @@ body {
 }
 .embed-fallback a:hover { text-decoration: underline; }
 .modal-info { padding: 16px 20px; }
+.modal-title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.modal-fav-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px 0 0;
+}
+.modal-fav-btn:hover { color: var(--text); }
+.modal-fav-btn.on { color: var(--orange); }
 .modal-info .title {
   font-weight: 600;
   font-size: 0.95rem;
   line-height: 1.5;
-  margin-bottom: 8px;
+  flex: 1;
+  margin-bottom: 0;
 }
 .modal-info .author {
   font-size: 0.8rem;
   color: var(--text-dim);
   margin-bottom: 8px;
 }
-.modal-info .original-link { display: none; }
+.modal-info .original-link:empty { display: none; }
 
 /* ── Empty State ── */
 .empty-state {
@@ -451,7 +491,10 @@ body {
   <div class="modal">
     <div id="modalPlayer"></div>
     <div class="modal-info">
-      <div class="title" id="modalTitle"></div>
+      <div class="modal-title-row">
+        <button type="button" class="modal-fav-btn" id="modalFavBtn" onclick="toggleFavouriteModal()" aria-label="Toggle favourite">☆</button>
+        <div class="title" id="modalTitle"></div>
+      </div>
       <div class="author" id="modalAuthor"></div>
       <div class="original-link" id="modalLink"></div>
     </div>
@@ -463,12 +506,152 @@ body {
 <script>
 const { categories, items } = SITE_DATA;
 
+const LS_FAV = 'bookmarksLibKids:favourites:v1';
+const LS_RECENT = 'bookmarksLibKids:recent:v1';
+const RECENT_CAP = 80;
+
 let currentCat = null;
 let kidMode = false;
 let searchQuery = '';
+let modalOpenItemId = null;
 const searchScopes = { text: true, author: true, tags: false, whole: true };
 
 const $ = id => document.getElementById(id);
+const byNormUrl = new Map();
+
+function normUrl(raw) {
+  if (!raw || typeof raw !== 'string') return '';
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  try {
+    const u = new URL(trimmed);
+    u.search = '';
+    u.hash = '';
+    let host = u.hostname.toLowerCase();
+    if (host === 'twitter.com' || host === 'www.twitter.com') u.hostname = 'x.com';
+    else if (host === 'mobile.twitter.com' || host === 'm.twitter.com') u.hostname = 'x.com';
+    else if (host === 'www.x.com') u.hostname = 'x.com';
+    let out = u.toString();
+    if (out.endsWith('/') && u.pathname !== '/') out = out.slice(0, -1);
+    return out;
+  } catch {
+    return '';
+  }
+}
+
+function rebuildUrlIndex() {
+  byNormUrl.clear();
+  for (const i of items) {
+    const k = normUrl(i.url);
+    if (k) byNormUrl.set(k, i);
+  }
+}
+rebuildUrlIndex();
+
+function loadJson(key, fallback) {
+  try {
+    const s = localStorage.getItem(key);
+    if (s == null) return fallback;
+    return JSON.parse(s);
+  } catch {
+    return fallback;
+  }
+}
+
+function saveJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn('localStorage save failed', key, e);
+  }
+}
+
+function pruneStoredUserData() {
+  const favsRaw = loadJson(LS_FAV, []);
+  const favArr = Array.isArray(favsRaw) ? favsRaw : [];
+  const favKeys = favArr.map(normUrl).filter(Boolean);
+  const nextFav = [];
+  const seenF = new Set();
+  let favChanged = !Array.isArray(favsRaw) || favArr.length !== favKeys.length;
+  for (const k of favKeys) {
+    if (!byNormUrl.has(k)) { favChanged = true; continue; }
+    if (seenF.has(k)) { favChanged = true; continue; }
+    seenF.add(k);
+    nextFav.push(k);
+  }
+  if (nextFav.length !== favKeys.length) favChanged = true;
+
+  const recentRaw = loadJson(LS_RECENT, []);
+  const nextRecent = [];
+  const seenR = new Set();
+  let recentChanged = !Array.isArray(recentRaw);
+  const arr = Array.isArray(recentRaw) ? recentRaw : [];
+  for (const e of arr) {
+    const k = normUrl(e && e.u);
+    if (!k || !byNormUrl.has(k)) { recentChanged = true; continue; }
+    if (seenR.has(k)) { recentChanged = true; continue; }
+    seenR.add(k);
+    nextRecent.push({ u: k, t: typeof e.t === 'number' ? e.t : Date.now() });
+  }
+  if (nextRecent.length !== arr.length) recentChanged = true;
+
+  if (favChanged) saveJson(LS_FAV, nextFav);
+  if (recentChanged) saveJson(LS_RECENT, nextRecent);
+}
+
+function getFavouriteKeys() {
+  pruneStoredUserData();
+  return loadJson(LS_FAV, []);
+}
+
+function isFavourite(url) {
+  const k = normUrl(url);
+  if (!k) return false;
+  return getFavouriteKeys().includes(k);
+}
+
+function toggleFavourite(url) {
+  const k = normUrl(url);
+  if (!k) return;
+  pruneStoredUserData();
+  let favs = loadJson(LS_FAV, []);
+  const idx = favs.indexOf(k);
+  if (idx >= 0) favs.splice(idx, 1);
+  else favs.push(k);
+  saveJson(LS_FAV, favs);
+}
+
+function recordRecent(url) {
+  const k = normUrl(url);
+  if (!k) return;
+  pruneStoredUserData();
+  let entries = loadJson(LS_RECENT, []);
+  if (!Array.isArray(entries)) entries = [];
+  entries = entries.filter(e => normUrl(e.u) !== k);
+  entries.unshift({ u: k, t: Date.now() });
+  if (entries.length > RECENT_CAP) entries = entries.slice(0, RECENT_CAP);
+  saveJson(LS_RECENT, entries);
+}
+
+function getRecentKeysOrdered() {
+  pruneStoredUserData();
+  const entries = loadJson(LS_RECENT, []);
+  if (!Array.isArray(entries)) return [];
+  return entries.map(e => normUrl(e.u)).filter(Boolean);
+}
+
+function itemPassesKidMode(i) {
+  if (!kidMode) return true;
+  if (i.risque) return false;
+  const cat = categories.find(c => c.slug === i.category);
+  return cat && cat.kid_safe !== false;
+}
+
+function visibleCountFromUrlKeys(keys) {
+  let list = keys.map(k => byNormUrl.get(k)).filter(Boolean);
+  if (kidMode) list = list.filter(itemPassesKidMode);
+  return list.length;
+}
 
 function toggleScope(el) {
   const scope = el.dataset.scope;
@@ -524,7 +707,26 @@ function videoMime(path) {
 // ── Category Grid ──
 function renderCategories() {
   const grid = $('catGrid');
-  grid.innerHTML = categories.map(c => {
+  pruneStoredUserData();
+  const favKeys = loadJson(LS_FAV, []);
+  const recentEntries = loadJson(LS_RECENT, []);
+  const recentKeys = Array.isArray(recentEntries)
+    ? recentEntries.map(e => normUrl(e.u)).filter(Boolean)
+    : [];
+  const nf = visibleCountFromUrlKeys(favKeys);
+  const nr = visibleCountFromUrlKeys(recentKeys);
+  const virtual = `
+    <div class="cat-card" onclick="selectCategory('__recent__')">
+      <div class="icon">🕐</div>
+      <div class="name">Recently viewed</div>
+      <div class="count">${nr} saved</div>
+    </div>
+    <div class="cat-card" onclick="selectCategory('__fav__')">
+      <div class="icon">⭐</div>
+      <div class="name">Favourites</div>
+      <div class="count">${nf} saved</div>
+    </div>`;
+  grid.innerHTML = virtual + categories.map(c => {
     const hidden = kidMode && !c.kid_safe ? 'hidden' : '';
     const videoBadge = c.video_count > 0
       ? `<span class="video-badge">${c.video_count} with preview</span>`
@@ -541,8 +743,15 @@ function renderCategories() {
 // ── Items Grid ──
 function selectCategory(slug) {
   currentCat = slug;
-  const cat = categories.find(c => c.slug === slug);
-  $('sectionTitle').textContent = `${cat.icon} ${cat.name}`;
+  if (slug === '__recent__') {
+    $('sectionTitle').textContent = '🕐 Recently viewed';
+  } else if (slug === '__fav__') {
+    $('sectionTitle').textContent = '⭐ Favourites';
+  } else {
+    const cat = categories.find(c => c.slug === slug);
+    if (!cat) return;
+    $('sectionTitle').textContent = `${cat.icon} ${cat.name}`;
+  }
   $('catGrid').style.display = 'none';
   $('itemsView').style.display = 'block';
   renderItems();
@@ -558,8 +767,18 @@ function showCategories() {
 }
 
 function renderItems() {
-  let filtered = items.filter(i => i.category === currentCat);
-  if (kidMode) filtered = filtered.filter(i => !i.risque);
+  let filtered;
+  if (currentCat === '__fav__') {
+    const keys = getFavouriteKeys();
+    filtered = keys.map(k => byNormUrl.get(k)).filter(Boolean);
+  } else if (currentCat === '__recent__') {
+    const keys = getRecentKeysOrdered();
+    filtered = keys.map(k => byNormUrl.get(k)).filter(Boolean);
+  } else {
+    filtered = items.filter(i => i.category === currentCat);
+  }
+
+  if (kidMode) filtered = filtered.filter(itemPassesKidMode);
   if (searchQuery) {
     filtered = filtered.filter(i => itemMatchesSearch(i, searchQuery));
   }
@@ -573,6 +792,7 @@ function renderItems() {
   }
   $('emptyState').style.display = 'none';
 
+  const favSet = new Set(getFavouriteKeys());
   $('itemGrid').innerHTML = filtered.map(item => {
     let thumbHtml;
     if (item.thumb_path) {
@@ -589,11 +809,13 @@ function renderItems() {
       const tc = categories.find(c => c.slug === t);
       return `<span class="tag">${tc ? tc.name : t}</span>`;
     }).join('');
+    const fav = favSet.has(normUrl(item.url));
 
     return `
       <div class="item-card" onclick="openItem(${item.id})">
         <div class="item-thumb">
           ${thumbHtml}${playBadge}${dur}
+          <button type="button" class="item-fav-star${fav ? ' on' : ''}" onclick="toggleFavouriteFromCard(event, ${item.id})" aria-label="Toggle favourite">${fav ? '★' : '☆'}</button>
         </div>
         <div class="item-body">
           <div class="text">${escHtml(item.text || '(no description)')}</div>
@@ -613,6 +835,52 @@ function escHtml(s) {
   return d.innerHTML;
 }
 
+function refreshItemGrid() {
+  if (currentCat === '__search__') {
+    if (searchQuery.length >= 2) {
+      const q = searchQuery.toLowerCase();
+      const matching = items.filter(i =>
+        (!kidMode || !i.risque) &&
+        (!kidMode || categories.find(c => c.slug === i.category)?.kid_safe !== false) &&
+        itemMatchesSearch(i, q)
+      );
+      renderSearchResults(matching);
+    }
+  } else if (currentCat) {
+    renderItems();
+  }
+}
+
+function toggleFavouriteFromCard(ev, id) {
+  ev.stopPropagation();
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  toggleFavourite(item.url);
+  refreshItemGrid();
+  syncModalFavButton();
+}
+
+function toggleFavouriteModal() {
+  const item = items.find(i => i.id === modalOpenItemId);
+  if (!item) return;
+  toggleFavourite(item.url);
+  syncModalFavButton();
+  refreshItemGrid();
+}
+
+function syncModalFavButton() {
+  const btn = $('modalFavBtn');
+  const item = items.find(i => i.id === modalOpenItemId);
+  if (!item) {
+    btn.classList.remove('on');
+    btn.textContent = '☆';
+    return;
+  }
+  const on = isFavourite(item.url);
+  btn.classList.toggle('on', on);
+  btn.textContent = on ? '★' : '☆';
+}
+
 // ── Open Item ──
 function extractTweetId(url) {
   const m = url.match(/\/status\/(\d+)/);
@@ -623,6 +891,9 @@ function openItem(id) {
   const item = items.find(i => i.id === id);
   if (!item) return;
 
+  modalOpenItemId = id;
+  recordRecent(item.url);
+
   if (item.has_video && item.video_path) {
     $('modalTitle').textContent = item.text || '';
     $('modalAuthor').textContent = `@${item.handle} · ${fmtDate(item.date)}`;
@@ -630,6 +901,8 @@ function openItem(id) {
     const vsrc = videoSrcEncoded(item.video_path);
     const vmime = videoMime(item.video_path);
     $('modalPlayer').innerHTML = `<video controls autoplay playsinline><source src="${vsrc}" type="${vmime}"></video>`;
+    syncModalFavButton();
+    if (currentCat === '__recent__') renderItems();
     $('modal').classList.add('open');
     document.body.style.overflow = 'hidden';
     return;
@@ -639,6 +912,8 @@ function openItem(id) {
   $('modalTitle').textContent = item.text || '';
   $('modalAuthor').textContent = `@${item.handle}`;
   $('modalLink').innerHTML = '';
+  syncModalFavButton();
+  if (currentCat === '__recent__') renderItems();
 
   const player = $('modalPlayer');
   player.innerHTML = `<div class="embed-loading"><div class="spinner"></div><p>Loading post…</p></div>`;
@@ -685,10 +960,12 @@ function showEmbedFallback(container, item) {
 }
 
 function closeModal() {
+  modalOpenItemId = null;
   $('modal').classList.remove('open');
   $('modalPlayer').innerHTML = '';
   $('modalTitle').textContent = '';
   $('modalAuthor').textContent = '';
+  $('modalLink').innerHTML = '';
   document.body.style.overflow = '';
 }
 
@@ -724,6 +1001,7 @@ function renderSearchResults(filtered) {
     return;
   }
   $('emptyState').style.display = 'none';
+  const favSet = new Set(getFavouriteKeys());
   $('itemGrid').innerHTML = filtered.map(item => {
     const cat = categories.find(c => c.slug === item.category);
     let thumbHtml;
@@ -735,9 +1013,12 @@ function renderSearchResults(filtered) {
     const playBadge = item.has_video
       ? '<span class="play-badge">▶ VIDEO</span>'
       : '<span class="play-badge">▶ View</span>';
+    const fav = favSet.has(normUrl(item.url));
     return `
       <div class="item-card" onclick="openItem(${item.id})">
-        <div class="item-thumb">${thumbHtml}${playBadge}</div>
+        <div class="item-thumb">${thumbHtml}${playBadge}
+          <button type="button" class="item-fav-star${fav ? ' on' : ''}" onclick="toggleFavouriteFromCard(event, ${item.id})" aria-label="Toggle favourite">${fav ? '★' : '☆'}</button>
+        </div>
         <div class="item-body">
           <div class="text">${escHtml(item.text || '(no description)')}</div>
           <div class="meta">
@@ -749,16 +1030,19 @@ function renderSearchResults(filtered) {
   }).join('');
 }
 
-$('kidMode').addEventListener('change', e => {
-  kidMode = e.target.checked;
-  if (currentCat && currentCat !== '__search__') {
-    const cat = categories.find(c => c.slug === currentCat);
-    if (cat && !cat.kid_safe) showCategories();
-    else renderItems();
-  } else {
-    showCategories();
-  }
-});
+const kidModeEl = $('kidMode');
+if (kidModeEl && kidModeEl.tagName === 'INPUT' && kidModeEl.type === 'checkbox') {
+  kidModeEl.addEventListener('change', e => {
+    kidMode = e.target.checked;
+    if (currentCat && currentCat !== '__search__') {
+      const cat = categories.find(c => c.slug === currentCat);
+      if (cat && !cat.kid_safe) showCategories();
+      else renderItems();
+    } else {
+      showCategories();
+    }
+  });
+}
 
 $('modal').addEventListener('click', e => {
   if (e.target === $('modal')) closeModal();
