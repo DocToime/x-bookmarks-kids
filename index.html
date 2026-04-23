@@ -509,6 +509,18 @@ function fmtDate(d) {
   catch { return ''; }
 }
 
+function videoSrcEncoded(path) {
+  if (!path) return '';
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
+function videoMime(path) {
+  const p = (path || '').toLowerCase();
+  if (p.endsWith('.webm')) return 'video/webm';
+  if (p.endsWith('.mkv')) return 'video/x-matroska';
+  return 'video/mp4';
+}
+
 // ── Category Grid ──
 function renderCategories() {
   const grid = $('catGrid');
@@ -569,7 +581,9 @@ function renderItems() {
       const cat = categories.find(c => c.slug === item.category);
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
     }
-    const playBadge = '<span class="play-badge">▶ View</span>';
+    const playBadge = item.has_video
+      ? '<span class="play-badge">▶ VIDEO</span>'
+      : '<span class="play-badge">▶ View</span>';
     const dur = '';
     const tagHtml = item.tags.map(t => {
       const tc = categories.find(c => c.slug === t);
@@ -608,6 +622,18 @@ function extractTweetId(url) {
 function openItem(id) {
   const item = items.find(i => i.id === id);
   if (!item) return;
+
+  if (item.has_video && item.video_path) {
+    $('modalTitle').textContent = item.text || '';
+    $('modalAuthor').textContent = `@${item.handle} · ${fmtDate(item.date)}`;
+    $('modalLink').innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem">Local library video</span>';
+    const vsrc = videoSrcEncoded(item.video_path);
+    const vmime = videoMime(item.video_path);
+    $('modalPlayer').innerHTML = `<video controls autoplay playsinline><source src="${vsrc}" type="${vmime}"></video>`;
+    $('modal').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    return;
+  }
 
   const tweetId = extractTweetId(item.url);
   $('modalTitle').textContent = item.text || '';
@@ -706,7 +732,9 @@ function renderSearchResults(filtered) {
     } else {
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
     }
-    const playBadge = '<span class="play-badge">▶ View</span>';
+    const playBadge = item.has_video
+      ? '<span class="play-badge">▶ VIDEO</span>'
+      : '<span class="play-badge">▶ View</span>';
     return `
       <div class="item-card" onclick="openItem(${item.id})">
         <div class="item-thumb">${thumbHtml}${playBadge}</div>
