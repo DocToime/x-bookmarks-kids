@@ -428,6 +428,113 @@ body {
 }
 .modal-info .original-link:empty { display: none; }
 
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+#modal.lucky-dip-immersive {
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 100dvh;
+  background: #000;
+}
+#modal.lucky-dip-immersive .modal {
+  max-width: 100%;
+  width: 100%;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  height: 100dvh;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0a0a0f;
+}
+#modal.lucky-dip-immersive #modalPlayer {
+  flex: 1;
+  min-height: 0;
+  padding: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  align-items: stretch;
+  justify-content: center;
+}
+#modal.lucky-dip-immersive #modalPlayer video {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 0;
+}
+#modal.lucky-dip-immersive .no-video {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+#modal.lucky-dip-immersive .modal-info {
+  padding: 10px 16px 12px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  max-height: 30vh;
+  overflow-y: auto;
+}
+.lucky-dip-bar {
+  display: none;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: linear-gradient(180deg, #12121a, #0f0f13);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+#modal.lucky-dip-immersive .lucky-dip-bar { display: flex; }
+#modal.lucky-dip-immersive .modal-close { top: 10px; right: 10px; z-index: 220; }
+.lucky-dip-bar button {
+  font: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  min-height: 48px;
+  min-width: 120px;
+  padding: 0 20px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lucky-dip-bar .lucky-back { background: var(--surface); color: var(--text); }
+.lucky-dip-bar .lucky-back:hover:not(:disabled) { background: var(--surface-hover); }
+.lucky-dip-bar .lucky-back:disabled { opacity: 0.45; cursor: not-allowed; }
+.lucky-dip-bar .lucky-next { background: var(--accent); color: #fff; border-color: var(--accent); }
+.lucky-dip-bar .lucky-next:hover { filter: brightness(1.08); }
+.lucky-dip-bar .lucky-done { background: transparent; color: var(--text-dim); }
+.lucky-dip-fallback-hint {
+  display: none;
+  text-align: center;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 0 12px 8px;
+  width: 100%;
+  flex-basis: 100%;
+  order: -1;
+}
+#modal.lucky-dip-immersive .lucky-dip-fallback-hint.show { display: block; }
+#luckyPreload {
+  position: fixed;
+  left: 0; top: 0;
+  width: 0; height: 0;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
 /* ── Empty State ── */
 .empty-state {
   text-align: center;
@@ -486,10 +593,18 @@ body {
 </div>
 
 <!-- Player Modal -->
-<div class="modal-overlay" id="modal">
-  <button class="modal-close" onclick="closeModal()">×</button>
-  <div class="modal">
+<div class="modal-overlay" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div id="luckyDipAnnouncer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+  <video id="luckyPreload" muted playsinline preload="none" tabindex="-1" aria-hidden="true"></video>
+  <button class="modal-close" type="button" onclick="closeModal()" aria-label="Close">×</button>
+  <div class="modal" id="modalBox">
     <div id="modalPlayer"></div>
+    <div id="luckyDipBar" class="lucky-dip-bar">
+      <p id="luckyDipFallbackHint" class="lucky-dip-fallback-hint" role="status"></p>
+      <button type="button" class="lucky-back" id="luckyBack" onclick="luckyDipBack()" aria-label="Lucky dip: go back">Back</button>
+      <button type="button" class="lucky-next" id="luckyNext" onclick="luckyDipNext()" aria-label="Lucky dip: next random">Next</button>
+      <button type="button" class="lucky-done" id="luckyDone" onclick="closeModal()" aria-label="Lucky dip: done">Done</button>
+    </div>
     <div class="modal-info">
       <div class="modal-title-row">
         <button type="button" class="modal-fav-btn" id="modalFavBtn" onclick="toggleFavouriteModal()" aria-label="Toggle favourite">☆</button>
@@ -509,12 +624,20 @@ const { categories, items } = SITE_DATA;
 const LS_FAV = 'bookmarksLibKids:favourites:v1';
 const LS_RECENT = 'bookmarksLibKids:recent:v1';
 const RECENT_CAP = 80;
+const KID_BUILD = SITE_DATA.kid_build === true;
+const LUCKY_RECENT_MS = 4000;
+const LUCKY_VIDEO_ONLY = true;
 
 let currentCat = null;
 let kidMode = false;
 let searchQuery = '';
 let modalOpenItemId = null;
 const searchScopes = { text: true, author: true, tags: false, whole: true };
+
+let luckyDipActive = false;
+let luckyHistory = [];
+let luckyHistoryIndex = 0;
+let luckyDipRecentTimer = null;
 
 const $ = id => document.getElementById(id);
 const byNormUrl = new Map();
@@ -704,6 +827,183 @@ function videoMime(path) {
   return 'video/mp4';
 }
 
+function pickRandomFrom(arr) {
+  if (!arr || arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function luckyPoolItemsSource() {
+  return items.filter(i =>
+    itemPassesKidMode(i) && (!LUCKY_VIDEO_ONLY || (i.has_video && i.video_path))
+  );
+}
+
+function buildLuckyDipPool() {
+  const recentSet = new Set(getRecentKeysOrdered());
+  return luckyPoolItemsSource().filter(i => !recentSet.has(normUrl(i.url)));
+}
+
+function pickFromOldestHalf() {
+  const raw = loadJson(LS_RECENT, []);
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const n = raw.length;
+  const k = Math.max(1, Math.floor(n / 2));
+  const slice = raw.slice(-k);
+  const seen = new Set();
+  const candidates = [];
+  for (const e of slice) {
+    const u = normUrl(e && e.u);
+    if (!u) continue;
+    const it = byNormUrl.get(u);
+    if (!it) continue;
+    if (!itemPassesKidMode(it)) continue;
+    if (LUCKY_VIDEO_ONLY && (!it.has_video || !it.video_path)) continue;
+    if (seen.has(it.id)) continue;
+    seen.add(it.id);
+    candidates.push(it);
+  }
+  return pickRandomFrom(candidates);
+}
+
+function pickLuckyDipItem() {
+  const pool = buildLuckyDipPool();
+  if (pool.length > 0) {
+    return { item: pickRandomFrom(pool), hint: '' };
+  }
+  const fromHalf = pickFromOldestHalf();
+  if (fromHalf) {
+    return { item: fromHalf, hint: "You've seen these before — here's an older favourite!" };
+  }
+  const any = pickRandomFrom(luckyPoolItemsSource());
+  if (any) {
+    return { item: any, hint: "Nothing new right now — here's a pick from the library." };
+  }
+  return { item: null, hint: '' };
+}
+
+function scheduleLuckyDipRecent(url) {
+  if (luckyDipRecentTimer) clearTimeout(luckyDipRecentTimer);
+  const k = normUrl(url);
+  if (!k) return;
+  luckyDipRecentTimer = setTimeout(() => {
+    luckyDipRecentTimer = null;
+    recordRecent(k);
+  }, LUCKY_RECENT_MS);
+}
+
+function cancelLuckyDipDebounce() {
+  if (luckyDipRecentTimer) {
+    clearTimeout(luckyDipRecentTimer);
+    luckyDipRecentTimer = null;
+  }
+}
+
+function flushLuckyDipRecent() {
+  if (!luckyDipActive) return;
+  cancelLuckyDipDebounce();
+  const item = items.find(i => i.id === modalOpenItemId);
+  if (item) recordRecent(item.url);
+}
+
+function endLuckyDipState() {
+  cancelLuckyDipDebounce();
+  luckyDipActive = false;
+  luckyHistory = [];
+  luckyHistoryIndex = 0;
+  const mod = $('modal');
+  if (mod) mod.classList.remove('lucky-dip-immersive');
+  const h = $('luckyDipFallbackHint');
+  if (h) {
+    h.classList.remove('show');
+    h.textContent = '';
+  }
+  const pre = $('luckyPreload');
+  if (pre) {
+    pre.removeAttribute('src');
+  }
+}
+
+function syncLuckyDipChrome() {
+  if (!luckyDipActive) return;
+  const back = $('luckyBack');
+  if (back) back.disabled = luckyHistoryIndex <= 0;
+}
+
+function scheduleLuckyDipPreload() {
+  if (!luckyDipActive) return;
+  const pre = $('luckyPreload');
+  if (!pre) return;
+  const { item } = pickLuckyDipItem();
+  if (item && item.video_path) {
+    pre.preload = 'auto';
+    pre.src = videoSrcEncoded(item.video_path);
+  } else {
+    pre.removeAttribute('src');
+  }
+}
+
+function startLuckyDip() {
+  const { item, hint } = pickLuckyDipItem();
+  if (!item) {
+    alert('No videos available for Lucky Dip yet.');
+    return;
+  }
+  luckyDipActive = true;
+  luckyHistory = [item.id];
+  luckyHistoryIndex = 0;
+  const hintEl = $('luckyDipFallbackHint');
+  if (hintEl) {
+    if (hint) {
+      hintEl.textContent = hint;
+      hintEl.classList.add('show');
+    } else {
+      hintEl.classList.remove('show');
+      hintEl.textContent = '';
+    }
+  }
+  openItem(item.id, { skipRecent: true });
+  queueMicrotask(() => {
+    const n = $('luckyNext');
+    if (n) n.focus();
+  });
+}
+
+function luckyDipBack() {
+  if (!luckyDipActive) return;
+  cancelLuckyDipDebounce();
+  if (luckyHistoryIndex <= 0) return;
+  luckyHistoryIndex -= 1;
+  const h = $('luckyDipFallbackHint');
+  if (h) h.classList.remove('show');
+  openItem(luckyHistory[luckyHistoryIndex], { skipRecent: true });
+}
+
+function luckyDipNext() {
+  if (!luckyDipActive) return;
+  cancelLuckyDipDebounce();
+  if (luckyHistoryIndex < luckyHistory.length - 1) {
+    luckyHistory = luckyHistory.slice(0, luckyHistoryIndex + 1);
+  }
+  const { item, hint } = pickLuckyDipItem();
+  if (!item) {
+    alert('No more items available.');
+    return;
+  }
+  const hintEl = $('luckyDipFallbackHint');
+  if (hintEl) {
+    if (hint) {
+      hintEl.textContent = hint;
+      hintEl.classList.add('show');
+    } else {
+      hintEl.classList.remove('show');
+      hintEl.textContent = '';
+    }
+  }
+  luckyHistory.push(item.id);
+  luckyHistoryIndex = luckyHistory.length - 1;
+  openItem(item.id, { skipRecent: true });
+}
+
 // ── Category Grid ──
 function renderCategories() {
   const grid = $('catGrid');
@@ -715,6 +1015,13 @@ function renderCategories() {
     : [];
   const nf = visibleCountFromUrlKeys(favKeys);
   const nr = visibleCountFromUrlKeys(recentKeys);
+  const luckyCard = KID_BUILD
+    ? `<div class="cat-card" onclick="startLuckyDip()">
+      <div class="icon">🎲</div>
+      <div class="name">Lucky Dip</div>
+      <div class="count">Random fun</div>
+    </div>`
+    : '';
   const virtual = `
     <div class="cat-card" onclick="selectCategory('__recent__')">
       <div class="icon">🕐</div>
@@ -725,7 +1032,7 @@ function renderCategories() {
       <div class="icon">⭐</div>
       <div class="name">Favourites</div>
       <div class="count">${nf} saved</div>
-    </div>`;
+    </div>${luckyCard}`;
   grid.innerHTML = virtual + categories.map(c => {
     const hidden = kidMode && !c.kid_safe ? 'hidden' : '';
     const videoBadge = c.video_count > 0
@@ -887,12 +1194,29 @@ function extractTweetId(url) {
   return m ? m[1] : null;
 }
 
-function openItem(id) {
+function openItem(id, options = {}) {
+  const skipRecent = options.skipRecent === true;
   const item = items.find(i => i.id === id);
   if (!item) return;
 
   modalOpenItemId = id;
-  recordRecent(item.url);
+  if (!skipRecent) {
+    recordRecent(item.url);
+  } else if (luckyDipActive) {
+    cancelLuckyDipDebounce();
+    scheduleLuckyDipRecent(item.url);
+  }
+
+  const modalEl = $('modal');
+  if (item.has_video && item.video_path) {
+    if (luckyDipActive) {
+      modalEl.classList.add('lucky-dip-immersive');
+    } else {
+      modalEl.classList.remove('lucky-dip-immersive');
+    }
+  } else {
+    modalEl.classList.remove('lucky-dip-immersive');
+  }
 
   if (item.has_video && item.video_path) {
     $('modalTitle').textContent = item.text || '';
@@ -903,8 +1227,17 @@ function openItem(id) {
     $('modalPlayer').innerHTML = `<video controls autoplay playsinline><source src="${vsrc}" type="${vmime}"></video>`;
     syncModalFavButton();
     if (currentCat === '__recent__') renderItems();
-    $('modal').classList.add('open');
+    modalEl.classList.add('open');
     document.body.style.overflow = 'hidden';
+    syncLuckyDipChrome();
+    if (luckyDipActive) {
+      const ann = $('luckyDipAnnouncer');
+      if (ann) {
+        const t = item.text || 'bookmark';
+        ann.textContent = 'Now playing: ' + t.slice(0, 200);
+      }
+      scheduleLuckyDipPreload();
+    }
     return;
   }
 
@@ -918,7 +1251,7 @@ function openItem(id) {
   const player = $('modalPlayer');
   player.innerHTML = `<div class="embed-loading"><div class="spinner"></div><p>Loading post…</p></div>`;
 
-  $('modal').classList.add('open');
+  modalEl.classList.add('open');
   document.body.style.overflow = 'hidden';
 
   if (tweetId && typeof twttr !== 'undefined' && twttr.widgets) {
@@ -959,14 +1292,33 @@ function showEmbedFallback(container, item) {
   </div>`;
 }
 
-function closeModal() {
+function reallyCloseModal() {
+  if (luckyDipActive) {
+    flushLuckyDipRecent();
+  }
+  endLuckyDipState();
   modalOpenItemId = null;
-  $('modal').classList.remove('open');
+  const modalEl = $('modal');
+  modalEl.classList.remove('open');
+  modalEl.classList.remove('lucky-dip-immersive');
   $('modalPlayer').innerHTML = '';
   $('modalTitle').textContent = '';
   $('modalAuthor').textContent = '';
   $('modalLink').innerHTML = '';
   document.body.style.overflow = '';
+}
+
+function closeModal() {
+  if (document.fullscreenElement) {
+    const p = document.exitFullscreen();
+    if (p && typeof p.then === 'function') {
+      p.then(() => reallyCloseModal()).catch(() => reallyCloseModal());
+    } else {
+      reallyCloseModal();
+    }
+    return;
+  }
+  reallyCloseModal();
 }
 
 // ── Events ──
@@ -1049,7 +1401,26 @@ $('modal').addEventListener('click', e => {
 });
 
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') closeModal();
+  if (!$('modal').classList.contains('open')) return;
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeModal();
+    return;
+  }
+  if (!luckyDipActive) return;
+  const t = e.target;
+  const typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA');
+  if (e.key === 'ArrowRight' || e.key === 'n' || e.key === 'N') {
+    if (typing) return;
+    e.preventDefault();
+    luckyDipNext();
+    return;
+  }
+  if (e.key === 'ArrowLeft' || e.key === 'p' || e.key === 'P') {
+    if (typing) return;
+    e.preventDefault();
+    luckyDipBack();
+  }
 });
 
 // ── Aggressive iframe lockdown ──
