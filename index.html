@@ -858,7 +858,32 @@ function videoMime(path) {
   return 'video/mp4';
 }
 
-function pickRandomFrom(arr) {
+function localVideoPartPaths(item) {
+  if (!item || !item.has_video) return [];
+  if (Array.isArray(item.video_paths) && item.video_paths.length) {
+    return item.video_paths;
+  }
+  if (item.video_path) return [item.video_path];
+  return [];
+}
+
+function attachLocalVideoPartChain(video, item) {
+  if (!video) return;
+  const parts = localVideoPartPaths(item);
+  if (parts.length <= 1) return;
+  let partIdx = 0;
+  video.addEventListener('ended', function onPartEnded() {
+    partIdx += 1;
+    if (partIdx >= parts.length) return;
+    const rel = parts[partIdx];
+    const vsrc = videoSrcEncoded(rel);
+    const vmime = videoMime(rel);
+    video.innerHTML = `<source src="${vsrc}" type="${vmime}">`;
+    video.load();
+    const p = video.play();
+    if (p && typeof p.catch === 'function') p.catch(() => {});
+  });
+}
   if (!arr || arr.length === 0) return null;
   return arr[Math.floor(Math.random() * arr.length)];
 }
@@ -962,9 +987,11 @@ function scheduleLuckyDipPreload() {
   const pre = $('luckyPreload');
   if (!pre) return;
   const { item } = pickLuckyDipItem();
-  if (item && item.video_path) {
+  const paths = item && item.video_path ? localVideoPartPaths(item) : [];
+  const first = paths[0];
+  if (first) {
     pre.preload = 'auto';
-    pre.src = videoSrcEncoded(item.video_path);
+    pre.src = videoSrcEncoded(first);
   } else {
     pre.removeAttribute('src');
   }
@@ -1243,9 +1270,14 @@ function openItem(id, options = {}) {
     $('modalTitle').textContent = item.text || '';
     $('modalAuthor').textContent = `@${item.handle} · ${fmtDate(item.date)}`;
     $('modalLink').innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem">Local library video</span>';
-    const vsrc = videoSrcEncoded(item.video_path);
-    const vmime = videoMime(item.video_path);
-    $('modalPlayer').innerHTML = `<video controls autoplay playsinline><source src="${vsrc}" type="${vmime}"></video>`;
+    const parts = localVideoPartPaths(item);
+    const firstPath = parts[0] || item.video_path;
+    const vsrc = videoSrcEncoded(firstPath);
+    const vmime = videoMime(firstPath);
+    $('modalPlayer').innerHTML = '<video controls autoplay playsinline></video>';
+    const vEl = $('modalPlayer').querySelector('video');
+    vEl.innerHTML = `<source src="${vsrc}" type="${vmime}">`;
+    attachLocalVideoPartChain(vEl, item);
     syncModalFavButton();
     if (currentCat === '__recent__') renderItems();
     modalEl.classList.add('open');
