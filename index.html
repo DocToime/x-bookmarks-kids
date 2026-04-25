@@ -824,9 +824,31 @@ function fmtDate(d) {
   catch { return ''; }
 }
 
+/** Project Pages root as pathname (e.g. /x-bookmarks-kids/ or /) so relative assets resolve correctly when the URL has no trailing slash. */
+function appBasePath() {
+  let p = location.pathname;
+  if (p === '/' || p === '') return '/';
+  if (p.endsWith('/')) return p;
+  if (/\.(html?|[a-z0-9]+)$/i.test(p) && p.lastIndexOf('.') > p.lastIndexOf('/')) {
+    return p.replace(/\/[^/]*$/, '/');
+  }
+  return p + '/';
+}
+
+/** Resolve a path from data (e.g. downloads/kids-TV/x.mp4) to a same-origin URL under the app, including GitHub Pages subpath. */
+function assetUrl(relative) {
+  if (!relative) return '';
+  const enc = String(relative)
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/');
+  const base = appBasePath();
+  if (base === '/') return enc.startsWith('/') ? enc : '/' + enc;
+  return base + enc.replace(/^\//, '');
+}
+
 function videoSrcEncoded(path) {
-  if (!path) return '';
-  return path.split('/').map(encodeURIComponent).join('/');
+  return assetUrl(path);
 }
 
 function videoMime(path) {
@@ -1106,7 +1128,7 @@ function renderItems() {
   $('itemGrid').innerHTML = filtered.map(item => {
     let thumbHtml;
     if (item.thumb_path) {
-      thumbHtml = `<img src="${item.thumb_path}" alt="" loading="lazy">`;
+      thumbHtml = `<img src="${escHtml(assetUrl(item.thumb_path))}" alt="" loading="lazy">`;
     } else {
       const cat = categories.find(c => c.slug === item.category);
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
@@ -1291,7 +1313,7 @@ function openItem(id, options = {}) {
 
 function showEmbedFallback(container, item) {
   const thumbHtml = item.thumb_path
-    ? `<img src="${escHtml(item.thumb_path)}" style="max-width:100%;border-radius:8px;margin-bottom:12px">`
+    ? `<img src="${escHtml(assetUrl(item.thumb_path))}" style="max-width:100%;border-radius:8px;margin-bottom:12px">`
     : '';
   container.innerHTML = `<div class="embed-fallback">
     ${thumbHtml}
@@ -1366,7 +1388,7 @@ function renderSearchResults(filtered) {
     const cat = categories.find(c => c.slug === item.category);
     let thumbHtml;
     if (item.thumb_path) {
-      thumbHtml = `<img src="${item.thumb_path}" alt="" loading="lazy">`;
+      thumbHtml = `<img src="${escHtml(assetUrl(item.thumb_path))}" alt="" loading="lazy">`;
     } else {
       thumbHtml = `<span class="placeholder">${cat ? cat.icon : '📌'}</span>`;
     }
