@@ -21,11 +21,11 @@
     return _attachShadow.call(this, Object.assign({}, init, { mode: 'open' }));
   };
 
-  // Block ALL popups globally — nothing should open a new window
   window.open = function() { return null; };
 
-  // Prevent the page itself from navigating away
+  window.__playboxAllowLeave = false;
   window.addEventListener('beforeunload', function(e) {
+    if (window.__playboxAllowLeave) return;
     e.preventDefault();
     e.returnValue = '';
     return '';
@@ -189,6 +189,10 @@ body {
 .cat-card .name { font-weight: 600; font-size: 0.85rem; margin-bottom: 4px; }
 .cat-card .count { font-size: 0.8rem; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .cat-card.hidden { display: none; }
+.cat-card.app-link {
+  background: linear-gradient(180deg, #1e2e28 0%, var(--surface) 100%);
+  border-color: #3d6b58;
+}
 
 /* ── Section Header ── */
 .section-header {
@@ -1205,6 +1209,11 @@ function scheduleLuckyDipPreload() {
   }
 }
 
+function openSiblingApp(url) {
+  window.__playboxAllowLeave = true;
+  location.href = url;
+}
+
 function startLuckyDip() {
   const { item, hint } = pickLuckyDipItem();
   if (!item) {
@@ -1283,6 +1292,11 @@ function renderCategories() {
       <div class="icon">🎲</div>
       <div class="name">Lucky Dip</div>
       <div class="count">Random</div>
+    </div>
+    <div class="cat-card app-link" onclick="openSiblingApp('https://doctoime.github.io/worM/')">
+      <div class="icon">🌶️</div>
+      <div class="name">WorM</div>
+      <div class="count">Memory garden</div>
     </div>`
     : '';
   const virtual = `
