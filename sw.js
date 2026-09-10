@@ -7,11 +7,13 @@
  *      ever hands back whole responses, so ranges are sliced here.
  *
  * Videos are never cached automatically: they are hundreds of megabytes. The page
- * writes them into VIDEO_CACHE on request (see saveEpisodeOffline in index-kids.html)
- * and this worker just reads from it.
+ * writes them into VIDEO_CACHE on request (see saveEpisodeOffline in index.html)
+ * and this worker just reads from it. Saved playback on Chrome/Fire prefers a
+ * blob: URL from the page, because some Android Chromes will not play <video>
+ * through a service worker. Range handling here is the fallback.
  */
 
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL_CACHE = `kids-shell-${VERSION}`;
 const ASSET_CACHE = `kids-assets-${VERSION}`;
 const VIDEO_CACHE = 'kids-videos-v1'; // not versioned: survives app updates
@@ -64,15 +66,16 @@ function isAssetRequest(url) {
 
 /** Build a 206 response by slicing a cached full-body response. */
 async function rangeResponse(cached, rangeHeader) {
-  const buf = await cached.arrayBuffer();
-  const total = buf.byteLength;
-  const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  const blob = await cached.blob();
+  const total = blob.size;
+  const type = cached.headers.get('Content-Type') || blob.type || 'video/mp4';
+  const m = /^bytes=(\d*)-(\d*)$/.exec((rangeHeader || '').trim());
 
   if (!m) {
-    return new Response(buf, {
+    return new Response(blob, {
       status: 200,
       headers: {
-        'Content-Type': cached.headers.get('Content-Type') || 'video/mp4',
+        'Content-Type': type,
         'Content-Length': String(total),
         'Accept-Ranges': 'bytes',
       },
@@ -82,9 +85,10 @@ async function rangeResponse(cached, rangeHeader) {
   let start;
   let end;
   if (m[1] === '') {
-    // suffix form: last N bytes
     const suffix = parseInt(m[2], 10);
-    if (!Number.isFinite(suffix) || suffix <= 0) return new Response(buf, { status: 200 });
+    if (!Number.isFinite(suffix) || suffix <= 0) {
+      return new Response(blob, { status: 200, headers: { 'Content-Type': type } });
+    }
     start = Math.max(0, total - suffix);
     end = total - 1;
   } else {
@@ -100,29 +104,41 @@ async function rangeResponse(cached, rangeHeader) {
   }
   end = Math.min(Number.isFinite(end) ? end : total - 1, total - 1);
 
-  const slice = buf.slice(start, end + 1);
+  const slice = blob.slice(start, end + 1);
   return new Response(slice, {
     status: 206,
     headers: {
-      'Content-Type': cached.headers.get('Content-Type') || 'video/mp4',
-      'Content-Length': String(slice.byteLength),
+      'Content-Type': type,
+      'Content-Length': String(slice.size),
       'Content-Range': `bytes ${start}-${end}/${total}`,
       'Accept-Ranges': 'bytes',
     },
   });
 }
 
+async function matchVideo(cache, request) {
+  const url = request.url;
+  try {
+    return (await cache.match(url, { ignoreVary: true, ignoreSearch: true }))
+      || (await cache.match(url));
+  } catch (err) {
+    return cache.match(url);
+  }
+}
+
 async function handleVideo(request) {
   const cache = await caches.open(VIDEO_CACHE);
-  // Range requests never match a cached 200 directly, so match on URL.
-  const cached = await cache.match(request.url, { ignoreVary: true, ignoreSearch: true });
+  const cached = await matchVideo(cache, request);
 
   if (cached) {
     const range = request.headers.get('range');
-    return range ? rangeResponse(cached, range) : cached.clone();
+    try {
+      return range ? await rangeResponse(cached, range) : cached.clone();
+    } catch (err) {
+      return cached.clone();
+    }
   }
 
-  // Not saved offline — go to network, and let the failure surface as-is.
   return fetch(request);
 }
 

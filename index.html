@@ -638,6 +638,15 @@ body {
   font-size: 0.86rem;
 }
 body.is-offline .offline-banner { display: block; }
+.video-fail {
+  display: none;
+  text-align: center;
+  color: var(--text);
+  padding: 12px 16px 4px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.video-fail.show { display: block; }
 
 /* Fullscreen lifts the video into the browser's top layer, where it is no longer
    a flex item — `flex: 1` stops applying and the height collapses to auto, so a
@@ -1085,13 +1094,7 @@ function attachLocalVideoPartChain(video, item) {
   video.addEventListener('ended', function onPartEnded() {
     partIdx += 1;
     if (partIdx >= parts.length) return;
-    const rel = parts[partIdx];
-    const vsrc = videoSrcEncoded(rel);
-    const vmime = videoMime(rel);
-    video.innerHTML = `<source src="${vsrc}" type="${vmime}">`;
-    video.load();
-    const p = video.play();
-    if (p && typeof p.catch === 'function') p.catch(() => {});
+    startLocalVideo(video, item, partIdx);
   });
 }
 
@@ -1500,14 +1503,11 @@ function openItem(id, options = {}) {
     $('modalTitle').textContent = item.text || '';
     $('modalAuthor').textContent = `@${item.handle} · ${fmtDate(item.date)}`;
     $('modalLink').innerHTML = '<span style="color:var(--text-dim);font-size:0.8rem">Local library video</span>';
-    const parts = localVideoPartPaths(item);
-    const firstPath = parts[0] || item.video_path;
-    const vsrc = videoSrcEncoded(firstPath);
-    const vmime = videoMime(firstPath);
-    $('modalPlayer').innerHTML = '<video controls autoplay playsinline></video>';
+    releaseVideoObjectUrl();
+    $('modalPlayer').innerHTML = '<video controls autoplay playsinline webkit-playsinline></video><p class="video-fail" id="videoFail"></p>';
     const vEl = $('modalPlayer').querySelector('video');
-    vEl.innerHTML = `<source src="${vsrc}" type="${vmime}">`;
     attachLocalVideoPartChain(vEl, item);
+    startLocalVideo(vEl, item, 0);
     refreshOfflineRow(item);
     syncModalFavButton();
     if (currentCat === '__recent__') renderItems();
@@ -1596,6 +1596,7 @@ function reallyCloseModal() {
   }
   endLuckyDipState();
   modalOpenItemId = null;
+  releaseVideoObjectUrl();
   const modalEl = $('modal');
   modalEl.classList.remove('open');
   modalEl.classList.remove('lucky-dip-immersive');
@@ -1784,9 +1785,107 @@ document.addEventListener('click', e => {
 const VIDEO_CACHE = 'kids-videos-v1';
 const savedEpisodes = new Set();   // ids known to be fully cached
 let offlineBusyId = null;
+let playingObjectUrl = null;
+let playGeneration = 0;
 
 function offlineSupported() {
   return 'serviceWorker' in navigator && 'caches' in window;
+}
+
+function releaseVideoObjectUrl() {
+  playGeneration += 1;
+  if (playingObjectUrl) {
+    URL.revokeObjectURL(playingObjectUrl);
+    playingObjectUrl = null;
+  }
+}
+
+async function matchCachedVideo(cache, url) {
+  try {
+    return (await cache.match(url, { ignoreVary: true, ignoreSearch: true }))
+      || (await cache.match(url));
+  } catch (err) {
+    try { return await cache.match(url); } catch (err2) { return undefined; }
+  }
+}
+
+/** Chrome on Fire OS often will not play <video> through the service worker.
+ *  Saved files are already in Cache Storage — play them as a blob: URL instead. */
+async function blobFromVideoCache(url, mime) {
+  if (!offlineSupported()) return null;
+  try {
+    const cache = await caches.open(VIDEO_CACHE);
+    const hit = await matchCachedVideo(cache, url);
+    if (!hit) return null;
+    const blob = await hit.blob();
+    if (!blob || !blob.size) return null;
+    const type = (blob.type || '').toLowerCase();
+    if (type.startsWith('video/')) return blob;
+    return new Blob([blob], { type: mime || 'video/mp4' });
+  } catch (err) {
+    return null;
+  }
+}
+
+function showVideoFail(message) {
+  const el = $('videoFail');
+  if (!el) return;
+  el.textContent = message;
+  el.classList.add('show');
+}
+
+async function startLocalVideo(video, item, partIdx) {
+  if (!video) return;
+  const gen = ++playGeneration;
+  const parts = localVideoPartPaths(item);
+  const rel = parts[partIdx] || item.video_path;
+  if (!rel) return;
+  const url = videoSrcEncoded(rel);
+  const mime = videoMime(rel);
+  const fail = $('videoFail');
+  if (fail) {
+    fail.textContent = '';
+    fail.classList.remove('show');
+  }
+
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+  video.setAttribute('controls', '');
+  video.removeAttribute('src');
+  video.innerHTML = '';
+
+  const blob = await blobFromVideoCache(url, mime);
+  if (gen !== playGeneration || !video.isConnected) return;
+
+  if (blob) {
+    video.removeAttribute('crossorigin');
+    const obj = URL.createObjectURL(blob);
+    video.src = obj;
+    if (playingObjectUrl && playingObjectUrl !== obj) URL.revokeObjectURL(playingObjectUrl);
+    playingObjectUrl = obj;
+  } else {
+    if (playingObjectUrl) {
+      URL.revokeObjectURL(playingObjectUrl);
+      playingObjectUrl = null;
+    }
+    video.setAttribute('crossorigin', 'anonymous');
+    video.src = url;
+  }
+
+  video.onerror = () => {
+    if (gen !== playGeneration) return;
+    if (!navigator.onLine && !blob) {
+      showVideoFail('This episode is not saved on this tablet. Open Playbox on wifi and tap Save for offline.');
+      return;
+    }
+    showVideoFail(blob
+      ? 'This saved episode could not play. Close Playbox, open it on wifi, and save it again.'
+      : 'This episode could not play.');
+  };
+
+  video.load();
+  const p = video.play();
+  if (p && typeof p.catch === 'function') p.catch(() => {});
 }
 
 function itemOfflineUrls(item) {
@@ -1800,7 +1899,7 @@ async function isEpisodeSaved(item) {
   try {
     const cache = await caches.open(VIDEO_CACHE);
     for (const u of urls) {
-      const hit = await cache.match(u, { ignoreVary: true, ignoreSearch: true });
+      const hit = await matchCachedVideo(cache, u);
       if (!hit) return false;
     }
     return true;
@@ -1835,7 +1934,7 @@ async function saveEpisodeOffline(item, onProgress) {
   let doneBytes = 0;
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
-    if (await cache.match(url, { ignoreVary: true, ignoreSearch: true })) {
+    if (await matchCachedVideo(cache, url)) {
       doneBytes += sizes[i];
       onProgress(doneBytes, total, i + 1, urls.length);
       continue;
@@ -1999,6 +2098,10 @@ window.addEventListener('online', syncOnlineState);
 window.addEventListener('offline', syncOnlineState);
 
 if ('serviceWorker' in navigator) {
+  let reloadOnControllerChange = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (reloadOnControllerChange) location.reload();
+  });
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((reg) => {
       reg.addEventListener('updatefound', () => {
@@ -2006,6 +2109,7 @@ if ('serviceWorker' in navigator) {
         if (!sw) return;
         sw.addEventListener('statechange', () => {
           if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            reloadOnControllerChange = true;
             sw.postMessage({ type: 'SKIP_WAITING' });
           }
         });
